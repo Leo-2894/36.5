@@ -1,0 +1,190 @@
+[hidden] { display: none !important; }
+
+.start-menu .main-menu-buttons {
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(340px, calc(100vw - 40px));
+  gap: 14px;
+}
+
+.main-menu-buttons > button {
+  width: 100%;
+  min-height: 48px;
+  height: 54px;
+  border-radius: 15px;
+  font-size: 19px;
+}
+
+.main-menu-buttons .online-button {
+  background: #a8d8ef;
+  color: #102232;
+  box-shadow: 0 14px 36px #02060c72;
+}
+
+.main-menu-buttons .online-button:hover {
+  background: #c2e7f9;
+}
+
+#onlineLobby {
+  width: min(500px, calc(100vw - 28px));
+  max-height: calc(100dvh - 24px);
+  padding: clamp(19px, 4vw, 32px);
+  border: 1px solid #7297b77a;
+  border-radius: 21px;
+  color: #eaf3fa;
+  background: linear-gradient(155deg, #1b2b40, #0d161f 77%);
+  box-shadow: 0 20px 70px #03070dc9;
+}
+
+#onlineLobby::backdrop {
+  background: #040913b9;
+  backdrop-filter: blur(6px);
+}
+
+.lobby-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.lobby-header h1 { margin: 0; font-size: clamp(24px, 5vw, 33px); }
+.lobby-header p { margin: 6px 0 0; color: #b7c8d8; font-size: 14px; line-height: 1.45; }
+
+.lobby-art {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+}
+
+.lobby-art span {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  width: clamp(33px, 8vw, 44px);
+  height: clamp(43px, 10vw, 64px);
+}
+
+.lobby-art img {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: clamp(66px, 14vw, 95px);
+  height: auto;
+  max-width: none;
+  transform: translate(-50%, -50%);
+  object-fit: contain;
+}
+
+#onlineLobby button {
+  height: auto;
+  min-height: 43px;
+  padding: 9px 14px;
+  border: 1px solid #748ba360;
+  border-radius: 9px;
+  background: #26394c;
+  color: #ebf5ff;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+#onlineLobby button:hover { background: #34506a; }
+#onlineLobby button:disabled { opacity: .58; cursor: wait; }
+
+#onlineLobby .lobby-primary {
+  display: block;
+  width: 100%;
+  color: #102232;
+  background: #b5e4f7;
+  border-color: #c9ebf8;
+}
+
+#onlineLobby .lobby-primary:hover { background: #d5f0fb; }
+
+.lobby-form { margin-top: 19px; }
+
+#onlineLobby label {
+  display: block;
+  margin-bottom: 7px;
+  color: #cfdeea;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.lobby-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.lobby-row input {
+  min-width: 0;
+  min-height: 43px;
+  border: 1px solid #71889f7d;
+  border-radius: 9px;
+  padding: 8px 11px;
+  font: inherit;
+  color: #f1f7fc;
+  background: #0b1521;
+}
+
+.lobby-row input::placeholder { color: #a6b5c4; }
+#inviteCode { text-transform: uppercase; font-family: monospace; letter-spacing: .12em; }
+#inviteLink { font-size: 13px; }
+
+.lobby-waiting { margin: 0 0 17px; color: #c9d8e5; font-size: 14px; }
+
+.lobby-code {
+  display: block;
+  margin-bottom: 16px;
+  border: 1px solid #839eb955;
+  border-radius: 9px;
+  background: #0b1521;
+  color: #c1eafa;
+  padding: 10px;
+  text-align: center;
+  font: 700 clamp(24px, 6vw, 34px)/1.1 monospace;
+  letter-spacing: .2em;
+  user-select: all;
+}
+
+.lobby-message {
+  margin: 14px 0 10px;
+  color: #ffc6b0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.lobby-message:empty { display: none; }
+
+#onlineLobby .lobby-back { margin-top: 14px; }
+#onlineLobby button:focus-visible,
+#onlineLobby input:focus-visible { outline: 2px solid #b7e8ff; outline-offset: 2px; }
+
+.hand-heading {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: clamp(6px, 1vw, 12px);
+}
+
+#onlineTurnStatus {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #a8c4d8;
+  font-size: 13px;
+}
+
+#onlineTurnStatus.local-turn { color: #ffe092; font-weight: 700; }
+#onlineTurnStatus.connection-issue { color: #ffc6b0; }
+.hand-title #actionCount { flex: 0 0 auto; }
+
+@media (max-width: 480px) {
+  .lobby-header { margin-bottom: 18px; }
+  .hand-heading { gap: 6px; }
+  #onlineTurnStatus { font-size: 11px; }
+}
+

@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'">
+<title>36.5</title>
+
+  <link rel="stylesheet" href="game.css">
+  <link rel="stylesheet" href="online.css">
+</head>
+<body class="game-not-started">
+<div class="screen-flash" id="screenFlash"></div>
+<div class="snow" id="snow"></div>
+
+<div class="start-menu" id="startMenu">
+  <div class="main-menu-buttons">
+    <button class="start-button" id="startGameBtn">AI 대전</button>
+    <button class="online-button" id="onlineBtn">온라인 1대1</button>
+    <button class="rules-button" id="rulesBtn">게임 규칙</button>
+    <button class="language-button" id="langBtn">한국어</button>
+  </div>
+</div>
+
+<dialog id="onlineLobby" aria-labelledby="onlineTitle">
+  <header class="lobby-header">
+    <div>
+      <h1 id="onlineTitle">온라인 1대1</h1>
+      <p>친구와 초대 코드로 대전하세요.</p>
+    </div>
+    <div class="lobby-art" aria-hidden="true">
+      <span><img src="assets/lobby/heat-pack.png" alt=""></span>
+      <span><img src="assets/lobby/ice-pack.png" alt=""></span>
+    </div>
+  </header>
+  <div id="onlineDesktop" hidden>
+    <button id="hostOnDesktopBtn" class="lobby-primary" hidden>이 PC에서 방 만들기</button>
+    <form id="serverForm" class="lobby-form">
+      <label for="serverAddress">친구가 보낸 서버 주소 또는 초대 링크</label>
+      <div class="lobby-row">
+        <input id="serverAddress" type="text" inputmode="url" autocomplete="url" required placeholder="http://192.168.0.10:3650">
+        <button type="submit">접속</button>
+      </div>
+    </form>
+  </div>
+  <div id="onlineChoices" hidden>
+    <button id="createRoomBtn" class="lobby-primary">방 만들기</button>
+    <form id="joinForm" class="lobby-form">
+      <label for="inviteCode">초대 코드</label>
+      <div class="lobby-row">
+        <input id="inviteCode" type="text" maxlength="6" minlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" required placeholder="6자리 코드">
+        <button type="submit">참가</button>
+      </div>
+    </form>
+  </div>
+  <div id="waitingRoom" hidden>
+    <p class="lobby-waiting">친구가 입장하면 대전이 시작됩니다.</p>
+    <label for="roomCode">초대 코드</label>
+    <output id="roomCode" class="lobby-code"></output>
+    <label for="inviteLink">초대 링크</label>
+    <div class="lobby-row">
+      <input id="inviteLink" type="text" readonly>
+      <button id="copyInviteBtn">복사</button>
+    </div>
+  </div>
+  <p id="onlineMessage" class="lobby-message" role="status"></p>
+  <button id="closeOnlineBtn" class="lobby-back">돌아가기</button>
+</dialog>
+
+<div class="rules-screen" id="rulesScreen">
+  <div class="rules-panel">
+    <h1>게임 규칙</h1>
+
+    <h2>1. 기본 목표</h2>
+    <p>양 플레이어는 36.5°C에서 시작합니다. 상대의 체온을 25°C 이하로 만들면 승리합니다.</p>
+    <p>양쪽이 동시에 25°C 이하가 되면 체온이 높은 쪽이 이기며, 같으면 무승부입니다.</p>
+
+    <h2>2. 턴 진행</h2>
+    <ul>
+      <li>게임은 0턴에서 시작합니다.</li>
+      <li>선공은 매 경기 무작위로 정합니다. 양쪽이 한 차례씩 행동하면 1턴이 지납니다.</li>
+      <li>카드를 클릭하거나 드래그해 올린 뒤 카드 배치 확정을 누르면 효과가 발동합니다.</li>
+    </ul>
+
+    <h2>3. 카드 사용</h2>
+    <ul>
+      <li>한 턴에 기본적으로 최대 2장의 카드를 사용할 수 있습니다.</li>
+      <li>교체 카드는 카드 배치 횟수를 소모하지 않습니다.</li>
+      <li>15초가 지나면 배치한 카드를 자동 확정합니다. 배치한 카드가 없으면 사용 가능한 카드가 자동 선택되며, 사용할 카드도 없으면 턴을 종료합니다.</li>
+      <li>카드 배치를 취소해도 제한 시간은 초기화되지 않습니다. 배치한 카드가 없으면 원하는 때에 턴을 종료할 수 있습니다.</li>
+    </ul>
+
+    <h2>4. 체온과 상태 이상</h2>
+    <ul>
+      <li>상태는 즉시 적용되고, 효과를 받은 쪽의 다음 차례부터 남은 횟수를 계산합니다. 지속 회복과 피해는 그 차례가 시작될 때 적용됩니다.</li>
+      <li>38.5°C 이상에서는 체온 상승량이 절반이 됩니다. 40°C에 도달하면 39.5°C로 돌아가고 몸살과 실명에 2턴 동안 걸립니다.</li>
+      <li>보온은 체온 저하를 40% 줄이고, 옷 파손은 25% 늘립니다. 몸살은 체온 저하를 50% 늘리고 체온 상승을 25% 줄입니다. 동상은 체온 상승을 40% 줄입니다.</li>
+      <li>효과를 합친 체온 저하 배율의 상한은 1.75배입니다. 체온 변화는 0.5°C 단위로 반올림합니다.</li>
+    </ul>
+
+    <h2>5. 눈보라</h2>
+    <p>눈보라는 3턴마다 발동합니다. 양쪽에 들어가는 기본 피해는 -2°C부터 발동할 때마다 1°C씩 증가해 최대 -5°C가 됩니다.</p>
+
+    <button class="back-button" id="backToMenuBtn">돌아가기</button>
+  </div>
+</div>
+
+<div class="ending-screen" id="endingScreen">
+  <div class="ending-panel">
+    <div class="ending-kicker" id="endingKicker">GAME SET</div>
+    <div class="ending-title" id="endingTitle">P1이 승리하였습니다!</div>
+    <div class="ending-sub" id="endingSub">추위 속에서 마지막 온기를 지켜냈습니다.</div>
+    <div class="ending-actions">
+      <button id="endingRestartBtn">다시 시작</button>
+      <button class="secondary-ending" id="endingMainBtn">메인화면으로</button>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="topbar">
+    <div>
+      <div class="title">36.5</div>
+    </div>
+    <div class="pill" id="turnInfo">인게임 턴 0</div>
+  </div>
+
+  <div class="game">
+    <section class="panel player">
+      <h2>P1 <span class="ai-badge" id="p1Badge">플레이어</span></h2>
+      <div class="temp" id="p1Temp">36.5°C</div>
+      <div class="bar"><div class="bar-inner" id="p1Bar"></div></div>
+      <div class="status-row" id="p1Status"></div>
+      <div class="deck-info">
+        <div>덱 <b id="p1Deck">0</b></div>
+        <div>버림 <b id="p1Discard">0</b></div>
+      </div>
+      <div class="preview">
+        <div class="preview-title">다음 카드</div>
+        <div class="mini-card" id="p1Next">없음</div>
+      </div>
+    </section>
+
+    <main class="panel center">
+      <div class="phase">
+        <div class="blizzard-gauge" id="blizzardGauge" aria-label="Blizzard gauge">
+          <div class="blizzard-gauge-top">
+            <span class="blizzard-label">Blizzard 0/3</span>
+            <span class="blizzard-sub">0회 발동</span>
+          </div>
+          <div class="blizzard-track">
+            <div class="blizzard-fill"></div>
+          </div>
+        </div>
+        <div class="phase-box timer">
+          <div><span id="timer">15</span><small>카드 선택 제한</small></div>
+        </div>
+      </div>
+
+      <div class="field">
+        <div class="slot">
+          <div class="slot-title">P1 이번 턴 사용 카드</div>
+          <div id="p1Slot"></div>
+        </div>
+        <div class="slot">
+          <div class="slot-title">P2 이번 턴 사용 카드</div>
+          <div id="p2Slot"></div>
+        </div>
+      </div>
+
+      <div class="hand-title">
+        <div class="hand-heading">
+          <h3 id="handTitle">P1 손패</h3>
+          <span id="onlineTurnStatus" role="status" hidden></span>
+        </div>
+        <div id="actionCount">0 / 2</div>
+      </div>
+      <div class="cards" id="hand"></div>
+
+      <div class="btns">
+        <button id="endBtn">턴 종료</button>
+        <button class="secondary" id="cancelBtn">선택 취소</button>
+        <button class="secondary" id="restartBtn">처음부터 다시</button>
+        <button class="secondary" id="mainMenuBtn">메인화면으로</button>
+      </div>
+
+      <div class="log" id="log"></div>
+    </main>
+
+    <section class="panel player">
+      <h2>P2 <span class="ai-badge" id="p2Badge">AI</span></h2>
+      <div class="temp" id="p2Temp">36.5°C</div>
+      <div class="bar"><div class="bar-inner" id="p2Bar"></div></div>
+      <div class="status-row" id="p2Status"></div>
+      <div class="deck-info">
+        <div>덱 <b id="p2Deck">0</b></div>
+        <div>버림 <b id="p2Discard">0</b></div>
+      </div>
+      <div class="preview">
+        <div class="preview-title">다음 카드</div>
+        <div class="mini-card" id="p2Next">AI는 비공개</div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script src="rules.js"></script>
+<script src="messages.js"></script>
+<script src="ui.js"></script>
+<script src="online.js"></script>
+</body>
+</html>
+
+//여기까지 보실지는 모르겠지만 저희 작품 잘 봐주세요ㅜㅜ
