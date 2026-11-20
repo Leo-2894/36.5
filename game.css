@@ -1853,7 +1853,7 @@
     height: 100% !important;
     padding: 0 !important;
     box-sizing: border-box !important;
-    object-fit: cover !important;
+    object-fit: contain !important;
     object-position: center center !important;
     background: transparent !important;
     transform: none !important;
@@ -1938,7 +1938,7 @@
     height: 100% !important;
     padding: 0 !important;
     box-sizing: border-box !important;
-    object-fit: cover !important;
+    object-fit: contain !important;
     object-position: center center !important;
     display: block !important;
     filter: none !important;
@@ -2790,7 +2790,7 @@
     height: 100% !important;
     padding: 0 !important;
     box-sizing: border-box !important;
-    object-fit: cover !important;
+    object-fit: contain !important;
     object-position: center center !important;
     transform: none !important;
   }
@@ -4158,6 +4158,7 @@ body:not(.game-not-started) .wrap {
   height: 100% !important;
   min-height: 0 !important;
   max-height: none !important;
+  container-type: size;
   grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
   grid-template-rows: minmax(0, 1fr);
   grid-auto-rows: auto !important;
@@ -4173,7 +4174,31 @@ body:not(.game-not-started) .wrap {
   max-height: none !important;
 }
 
-.cards .card-shell { min-width: 0; }
+.cards > .card-shell {
+  width: min(100%, 62cqh) !important;
+  height: auto !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  aspect-ratio: 31 / 50;
+  place-self: center;
+}
+
+/* Card artwork already includes its own rounded border. */
+.card-shell.asset-skin .card-front:has(.has-custom-asset) {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+
+.card-shell.asset-skin .card-front:has(.has-custom-asset)::before,
+.card-shell.asset-skin .card-front:has(.has-custom-asset)::after {
+  display: none !important;
+}
+
+.card-front > .asset-card-image.has-custom-asset {
+  overflow: visible !important;
+}
 
 .cards .asset-hover-info {
   top: auto !important;
@@ -4229,6 +4254,10 @@ button:focus-visible {
 @media (max-width: 1100px) {
   .player { min-width: 0; padding-inline: 10px !important; }
   .player .temp { font-size: 34px !important; }
+}
+
+@media (min-width: 841px) and (max-height: 680px) {
+  .player .temp { margin-top: 156px !important; }
 }
 
 @media (max-width: 840px) {
