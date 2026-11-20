@@ -809,9 +809,9 @@ function createDragGhost(shell, event) {
   ghost.classList.add("drag-ghost-card", "mini-drag-card-fixed");
   ghost.classList.remove("dragging");
 
-  const scale = 0.42;
-  const ghostWidth = Math.max(108, Math.round(rect.width * scale));
-  const ghostHeight = Math.max(82, Math.round(rect.height * scale));
+  const scale = Math.min(1, Math.max(0.42, 64 / rect.width));
+  const ghostWidth = Math.round(rect.width * scale);
+  const ghostHeight = Math.round(rect.height * scale);
 
   const applyBox = (el, width, height) => {
     el.style.setProperty("width", `${width}px`, "important");
@@ -833,7 +833,7 @@ function createDragGhost(shell, event) {
   ghost.style.setProperty("opacity", "1", "important");
   ghost.style.setProperty("transform", "none", "important");
   ghost.style.setProperty("margin", "0", "important");
-  ghost.style.setProperty("overflow", "hidden", "important");
+  ghost.style.setProperty("overflow", "visible", "important");
   ghost.style.setProperty("border-radius", "14px", "important");
 
   const hoverInfo = ghost.querySelector(".asset-hover-info");
@@ -855,13 +855,6 @@ function createDragGhost(shell, event) {
     el.style.setProperty("height", "42px", "important");
     el.style.setProperty("font-size", "25px", "important");
     el.style.setProperty("border-radius", "14px", "important");
-  });
-
-  ghost.querySelectorAll("img.custom-card-asset").forEach(img => {
-    img.style.setProperty("width", "100%", "important");
-    img.style.setProperty("height", "100%", "important");
-    img.style.setProperty("object-fit", "cover", "important");
-    img.style.setProperty("object-position", "center", "important");
   });
 
   document.body.appendChild(ghost);
