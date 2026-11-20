@@ -105,6 +105,13 @@
 
 .lobby-form { margin-top: 19px; }
 
+.lobby-host-help {
+  margin: 8px 0 12px;
+  color: #b7c8d8;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 #onlineLobby label {
   display: block;
   margin-bottom: 7px;
