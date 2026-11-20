@@ -1,0 +1,2 @@
+36.5/36.5.exe filter=lfs diff=lfs merge=lfs -text
+36.5/** -text
