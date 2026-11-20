@@ -5,6 +5,8 @@ const files = require("node:fs/promises");
 const path = require("node:path");
 const { createHash, randomUUID } = require("node:crypto");
 const { spawn } = require("node:child_process");
+const https = require("node:https");
+const { isIP } = require("node:net");
 const { Readable } = require("node:stream");
 const { pipeline } = require("node:stream/promises");
 const { setTimeout: delay } = require("node:timers/promises");
@@ -13,6 +15,53 @@ const providerVersion = "2026.11.1";
 const expectedHash = "341deda3db5ec498a0482254d6c38c0b7cf01a30c37bb5dd95d2216d08955e35";
 const binaryUrl = "https://github.com/cloudflare/cloudflared/releases/download/" + providerVersion + "/cloudflared-windows-amd64.exe";
 const publicAddress = /https:\/\/[a-z0-9-]+\.trycloudflare\.com(?=[\s|]|$)/;
+
+async function resolvePublicAddress(hostname) {
+  const dns = new URL("https://cloudflare-dns.com/dns-query");
+  dns.searchParams.set("name", hostname);
+  dns.searchParams.set("type", "A");
+  const response = await fetch(dns, {
+    headers: { Accept: "application/dns-json" },
+    signal: AbortSignal.timeout(3000),
+  });
+  if (!response.ok) return null;
+  const { Answer } = await response.json();
+  return Answer?.find(record => record.type === 1 && isIP(record.data) === 4)?.data ?? null;
+}
+
+async function checkPublicOrigin(origin) {
+  try {
+    const url = new URL("/api/info", origin);
+    // The OS can cache a negative reply if the URL was announced just before DNS propagation.
+    const address = await resolvePublicAddress(url.hostname);
+    if (!address) return false;
+    return await new Promise((resolve, reject) => {
+      const request = https.get(url, {
+        family: 4,
+        lookup: (_hostname, options, callback) => {
+          if (options.all) callback(null, [{ address, family: 4 }]);
+          else callback(null, address, 4);
+        },
+        signal: AbortSignal.timeout(4000),
+      }, async response => {
+        if (response.statusCode !== 200) {
+          response.resume();
+          resolve(false);
+          return;
+        }
+        try {
+          let body = "";
+          for await (const chunk of response) {
+            body += chunk;
+            if (body.length > 4096) throw new Error("Unexpected tunnel response");
+          }
+          resolve(JSON.parse(body).origin === origin);
+        } catch (error) { reject(error); }
+      });
+      request.on("error", reject);
+    });
+  } catch { return false; }
+}
 
 async function hasExpectedHash(filename) {
   try {
@@ -71,8 +120,7 @@ function waitForAddress(child) {
   });
 }
 
-async function openPublicTunnel({ cacheDir, port, checkAddress, isOpen = () => true }) {
-  const executable = await prepareBinary(cacheDir);
+async function startTunnel({ executable, cacheDir, port, checkAddress, isOpen }) {
   if (!isOpen()) throw new Error("The game window closed");
   const config = path.join(cacheDir, "tunnel-" + randomUUID() + ".yml");
   await files.writeFile(config, "{}\n", { flag: "wx" });
@@ -89,11 +137,12 @@ async function openPublicTunnel({ cacheDir, port, checkAddress, isOpen = () => t
     child.stderr.resume();
 
     // The provider can announce a URL before traffic reaches the origin.
-    for (let attempt = 0; attempt < 20 && child.exitCode === null && isOpen(); attempt++) {
+    const deadline = performance.now() + 45_000;
+    while (performance.now() < deadline && child.exitCode === null && isOpen()) {
       if (await checkAddress(origin) && child.exitCode === null && isOpen()) {
         return { origin, close, onExit: listener => child.once("exit", listener) };
       }
-      await delay(600);
+      await delay(900);
     }
     throw new Error("The public address did not reach the game server");
   } catch (error) {
@@ -102,4 +151,15 @@ async function openPublicTunnel({ cacheDir, port, checkAddress, isOpen = () => t
   }
 }
 
-module.exports = { openPublicTunnel };
+async function openPublicTunnel({ cacheDir, port, checkAddress, isOpen = () => true }) {
+  const executable = await prepareBinary(cacheDir);
+  const options = { executable, cacheDir, port, checkAddress, isOpen };
+  try {
+    return await startTunnel(options);
+  } catch (error) {
+    if (!isOpen()) throw error;
+    return startTunnel(options);
+  }
+}
+
+module.exports = { openPublicTunnel, checkPublicOrigin, resolvePublicAddress };
