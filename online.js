@@ -16,7 +16,8 @@ const Online = (() => {
   let session = null;
   let pollTimer = null;
   let busy = false;
-  let inviteOrigin = location.origin;
+  const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+  let inviteOrigin = hosted && !loopback ? location.origin : null;
 
   function request(path, { token, body, keepalive = false } = {}) {
     const headers = {};
@@ -50,6 +51,7 @@ const Online = (() => {
 
   function enableLobbyButtons(enabled) {
     for (const button of dialog.querySelectorAll("button")) button.disabled = !enabled;
+    get("copyInviteBtn").disabled = !enabled || !get("inviteLink").value;
   }
 
   function errorMessage(error) {
@@ -72,9 +74,16 @@ const Online = (() => {
 
   function inviteLink() {
     if (!session || session.playing) return;
+    const output = get("inviteLink");
+    output.value = "";
+    if (!inviteOrigin) {
+      get("copyInviteBtn").disabled = true;
+      return;
+    }
     const url = new URL("/", inviteOrigin);
     url.searchParams.set("room", session.code);
-    get("inviteLink").value = url.href;
+    output.value = url.href;
+    get("copyInviteBtn").disabled = busy;
   }
 
   function showWaiting() {
@@ -87,7 +96,7 @@ const Online = (() => {
 
   function openLobby() {
     get("onlineDesktop").hidden = hosted;
-    get("hostOnDesktopBtn").hidden = !window.desktopOnline;
+    get("desktopHostChoices").hidden = !window.desktopOnline;
     get("onlineChoices").hidden = !hosted || Boolean(session);
     get("waitingRoom").hidden = !session || session.playing;
     if (!dialog.open) dialog.showModal();
@@ -231,14 +240,19 @@ const Online = (() => {
   get("closeOnlineBtn").onclick = dismiss;
   dialog.oncancel = event => { event.preventDefault(); dismiss(); };
 
-  get("hostOnDesktopBtn").onclick = () => lobbyRequest(async () => {
+  const startDesktopHost = mode => lobbyRequest(async () => {
+    const internet = mode === "internet";
+    if (internet) message("인터넷 초대 주소를 만드는 중입니다…");
     try {
-      const address = await window.desktopOnline.startHost();
+      const address = await window.desktopOnline.startHost(mode);
       location.assign(new URL("/?online=host", address));
     } catch {
-      message("이 PC에서 서버를 시작할 수 없습니다. 3650 포트가 사용 중인지 확인하세요.");
+      message(internet ? "인터넷 초대 주소를 만들지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도하세요."
+        : "이 PC에서 서버를 시작할 수 없습니다. 3650 포트가 사용 중인지 확인하세요.");
     }
   });
+  get("hostOnDesktopBtn").onclick = () => startDesktopHost("internet");
+  get("hostLanBtn").onclick = () => startDesktopHost("lan");
 
   get("serverForm").onsubmit = event => {
     event.preventDefault();
@@ -283,8 +297,8 @@ const Online = (() => {
   };
 
   if (hosted) {
-    request("/api/info").then(info => {
-      inviteOrigin = info.origin ?? info.addresses[0] ?? location.origin;
+    const serverInfo = request("/api/info").then(info => {
+      inviteOrigin = info.origin ?? info.addresses[0] ?? inviteOrigin;
       inviteLink();
     }).catch(() => {});
     const query = new URLSearchParams(location.search);
@@ -300,8 +314,11 @@ const Online = (() => {
     } else if (query.get("online") === "host") {
       // Consume this flag before reloading or restoring the room from the same tab.
       history.replaceState(null, "", "/?online=1");
-      createRoom();
+      serverInfo.then(createRoom);
     }
+  } else if (new URLSearchParams(location.search).get("online") === "tunnel-closed") {
+    openLobby();
+    message("인터넷 초대 연결이 종료되었습니다. 새 방을 만들어 주세요.");
   }
 
   return { action, leave };
