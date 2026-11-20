@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { createGameServer, defaultPort } = require("./server.cjs");
-const { openPublicTunnel } = require("./tunnel.cjs");
+const { openPublicTunnel, checkPublicOrigin } = require("./tunnel.cjs");
 
 const gamePage = path.join(__dirname, "index.html");
 const hosts = new Map();
@@ -30,12 +30,9 @@ async function hostGame(session, mode) {
       cacheDir: path.join(app.getPath("userData"), "invite-bridge"),
       port,
       isOpen: () => session.open,
-      async checkAddress(origin) {
+      checkAddress(origin) {
         session.origin = origin;
-        try {
-          const response = await fetch(origin + "/api/info", { signal: AbortSignal.timeout(2000) });
-          return response.ok && (await response.json()).origin === origin;
-        } catch { return false; }
+        return checkPublicOrigin(origin);
       },
     });
     session.tunnel.onExit(() => {
