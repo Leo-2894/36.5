@@ -106,7 +106,7 @@ function handleEvent(event) {
     case "card":
       log(player.name + " 카드 사용 · " + card.name);
       showCardCast(player, card);
-      if (card.type === "스페셜") showSpecialCardEffect(card.name);
+
       break;
     case "draw":
       if (!player.isAI) drawnSlot = event.index;
@@ -407,7 +407,21 @@ function renderPlayer(player) {
   else if (hasStatus(player, "실명")) preview.textContent = "실명 상태: 다음 카드 확인 불가";
   else {
     const card = match.preview(player);
-    preview.textContent = card ? card.name + " · " + card.desc : "없음";
+    if (!card) preview.textContent = "없음";
+    else if (preview.querySelector("img")?.dataset.card !== card.id) {
+      const thumbnail = document.createElement("img");
+      thumbnail.src = `assets/cards/${card.id}.png`;
+      thumbnail.dataset.card = card.id;
+      thumbnail.alt = "";
+      thumbnail.draggable = false;
+      const details = document.createElement("span");
+      const name = document.createElement("strong");
+      name.textContent = card.name;
+      const description = document.createElement("span");
+      description.textContent = card.desc;
+      details.append(name, description);
+      preview.replaceChildren(thumbnail, details);
+    }
   }
 }
 
@@ -595,10 +609,19 @@ function showCardCast(player, card) {
   seal.className = "cast-seal";
   seal.dataset.tone = card.temp > 0 ? "heat" : card.temp < 0 ? "ice" : "arcane";
   seal.setAttribute("aria-hidden", "true");
-  seal.textContent = card.name;
+  const special = card.type === "스페셜";
+  if (special) {
+    seal.dataset.special = card.id;
+    const emblem = document.createElement("span");
+    emblem.className = "special-emblem";
+    emblem.append(document.createElement("i"), document.createElement("b"));
+    const title = document.createElement("strong");
+    title.textContent = card.name;
+    seal.append(emblem, title);
+  } else seal.textContent = card.name;
   slot.querySelector(".cast-seal")?.remove();
   slot.append(seal);
-  setTimeout(() => seal.remove(), 1050);
+  setTimeout(() => seal.remove(), special ? 1550 : 1050);
 }
 
 function showThermalImpact(anchor, tone) {
@@ -676,36 +699,6 @@ function showRussianHit(player) {
   shakeTimers.set(panel, setTimeout(() => panel.classList.remove("rh-shake"), 540));
   setTimeout(() => fx.remove(), 950);
 }
-
-function showSpecialCardEffect(cardName) {
-  const centerPanel = document.querySelector(".center");
-  if (!centerPanel) return;
-
-  const typeMap = {
-    "교체 카드": "swap",
-    "상대 턴 통제 카드": "control",
-    "회복 제한 카드": "lock",
-    "강화 디버프 카드": "flu"
-  };
-
-  const type = typeMap[cardName] || "swap";
-  const el = document.createElement("div");
-  el.className = `object-effect ${type}`;
-
-  if (type === "swap") {
-    el.innerHTML = `<div class="fx-card one"></div><div class="fx-card two"></div>`;
-  } else if (type === "control") {
-    el.innerHTML = `<div class="fx-chain"></div>`;
-  } else if (type === "lock") {
-    el.innerHTML = `<div class="fx-lock"></div>`;
-  } else if (type === "flu") {
-    el.innerHTML = `<div class="fx-sick"></div>`;
-  }
-
-  centerPanel.appendChild(el);
-  setTimeout(() => el.remove(), 1650);
-}
-
 
 function clearResultEffects() {
   document.querySelectorAll(".player.result-winner, .player.result-loser, .player.result-draw").forEach(el => {
