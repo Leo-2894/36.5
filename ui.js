@@ -12,6 +12,7 @@ let turnTimer = null;
 let endingTimer = null;
 let deadline = 0;
 let drawnSlot = null;
+let handLayout = null;
 let activeDrag = null;
 let bgm = null;
 let snowTimer;
@@ -43,10 +44,12 @@ function translateText(source) {
   return pattern ? source.replace(pattern, word => translations[language][word]) : source;
 }
 
-function applyLanguageToPage() {
-  document.documentElement.lang = language;
-  get("langBtn").textContent = languages[language];
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+function applyLanguageToPage(root = document.body) {
+  if (root === document.body) {
+    document.documentElement.lang = language;
+    get("langBtn").textContent = languages[language];
+  }
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   while (walker.nextNode()) {
     const node = walker.currentNode;
     if (node.parentElement.closest("#langBtn, script")) continue;
@@ -55,7 +58,7 @@ function applyLanguageToPage() {
     const translated = translateText(original);
     if (node.nodeValue !== translated) node.nodeValue = translated;
   }
-  document.querySelectorAll("[data-aria-label]").forEach(element => {
+  root.querySelectorAll("[data-aria-label]").forEach(element => {
     element.setAttribute("aria-label", translateText(element.dataset.ariaLabel));
   });
 }
@@ -68,7 +71,6 @@ function log(message, kind = "notice") {
   box.append(line);
   logEntries.push(line);
   if (logEntries.length > 100) logEntries.shift().remove();
-  box.scrollTop = box.scrollHeight;
 }
 
 function playSound(file, volume) {
@@ -179,11 +181,6 @@ function clearTurnTimer() {
 
 function scheduleTurn() {
   clearTurnTimer();
-  clearInterval(onlineClock);
-  onlineClock = null;
-  onlineDeadline = null;
-  onlineNotice = "";
-  onlineSide = null;
   if (!match || match.gameOver) return;
 
   const session = match;
@@ -231,6 +228,11 @@ function scheduleTurn() {
 
 function resetMatch() {
   clearTurnTimer();
+  clearInterval(onlineClock);
+  onlineClock = null;
+  onlineDeadline = null;
+  onlineNotice = "";
+  onlineSide = null;
   clearTimeout(endingTimer);
   clearTimeout(flashTimer);
   clearTimeout(snowTimer);
@@ -242,6 +244,7 @@ function resetMatch() {
   document.querySelectorAll(".rh-shake").forEach(panel => panel.classList.remove("rh-shake"));
   hideEndingScene();
   drawnSlot = null;
+  handLayout = null;
   match = null;
 }
 
@@ -281,7 +284,9 @@ function ownsTurn() {
 
 function updateOnlineClock() {
   if (!onlineSide) return;
-  get("timer").textContent = onlineDeadline === null ? "–" : Math.max(0, Math.ceil((onlineDeadline - performance.now()) / 1000));
+  const timer = get("timer");
+  const value = onlineDeadline === null ? "–" : String(Math.max(0, Math.ceil((onlineDeadline - performance.now()) / 1000)));
+  if (timer.textContent !== value) timer.textContent = value;
 }
 
 function setOnlineNotice(message) {
@@ -321,6 +326,10 @@ function receiveOnlineState(state, events, requestMs) {
     blizzardCount: state.blizzardCount, gameOver: state.phase === "finished",
   });
   onlineDeadline = state.remainingMs === null ? null : performance.now() + Math.max(0, state.remainingMs - requestMs / 2);
+  if (match.gameOver) {
+    clearInterval(onlineClock);
+    onlineClock = null;
+  }
   for (const event of events) handleEvent({ ...event, card: card(event.card) });
   render();
 }
@@ -428,6 +437,12 @@ function renderPlayer(player) {
 
 function renderHand(player) {
   const hand = get("hand");
+  const active = ownsTurn();
+  const reasons = player.isAI ? [] : player.hand.map(card => active ? legalCard(player, card) : "상대 차례");
+  const layout = player.isAI ? JSON.stringify([player.name, match.gameOver]) :
+    JSON.stringify([player.name, Boolean(active), player.pending?.index, player.hand.map(card => card?.id), reasons]);
+  if (handLayout === layout && (player.isAI || drawnSlot === null)) return;
+  handLayout = layout;
   hand.replaceChildren();
 
   if (player.isAI) {
@@ -441,8 +456,8 @@ function renderHand(player) {
   for (const [index, card] of player.hand.entries()) {
     if (!card) continue;
     const pending = player.pending?.index === index;
-    const reason = ownsTurn() ? legalCard(player, card) : "상대 차례";
-    const enabled = ownsTurn() && !player.pending && !reason;
+    const reason = reasons[index];
+    const enabled = active && !player.pending && !reason;
     const shell = document.createElement("div");
     shell.className = "card-shell asset-skin";
     shell.dataset.handIndex = index;
@@ -539,7 +554,7 @@ function render() {
   get("mainMenuBtn").textContent = onlineSide && !match.gameOver ? "기권하고 나가기" : "메인화면으로";
   if (!active) get("timer").textContent = "–";
   renderHand(player);
-  applyLanguageToPage();
+  applyLanguageToPage(document.querySelector(".wrap"));
   renderOnlineTurn();
   updateOnlineClock();
   get("log").scrollTop = get("log").scrollHeight;
