@@ -22,6 +22,7 @@ let onlineClock;
 let onlineDeadline = null;
 let onlineNotice = "";
 const cardById = new Map(GameRules.cards.map(card => [card.id, card]));
+const cardArtUrl = card => (window.desktopOnline ? "card-art://local/" : "assets/cards/") + card.id + ".png";
 
 try {
   const savedLanguage = localStorage.getItem("36.5.language");
@@ -410,7 +411,7 @@ function renderPlayer(player) {
     if (!card) preview.textContent = "없음";
     else if (preview.querySelector("img")?.dataset.card !== card.id) {
       const thumbnail = document.createElement("img");
-      thumbnail.src = `assets/cards/${card.id}.png`;
+      thumbnail.src = cardArtUrl(card);
       thumbnail.dataset.card = card.id;
       thumbnail.alt = "";
       thumbnail.draggable = false;
@@ -780,7 +781,7 @@ function getCardAssetClass(card) {
 }
 
 function createAssetCardFaceHTML(card) {
-  const visual = `<img class="custom-card-asset" src="assets/cards/${card.id}.png" alt="" draggable="false">`;
+  const visual = `<img class="custom-card-asset" src="${cardArtUrl(card)}" alt="" draggable="false">`;
 
   return `
     <div class="card-face card-front asset-card-front">

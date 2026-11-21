@@ -68,14 +68,15 @@ function serveFile(request, response, pathname) {
     response.writeHead(200, {
       "Content-Type": mediaTypes[path.extname(file)],
       "Content-Length": info.size,
-      "Cache-Control": file.startsWith("assets/") ? "public, max-age=3600" : "no-cache",
+      "Cache-Control": file.startsWith("assets/cards/") ? "no-store" :
+        file.startsWith("assets/") ? "public, max-age=3600" : "no-cache",
     });
     if (request.method === "HEAD") response.end();
     else pipeline(fs.createReadStream(absolute), response, () => {});
   });
 }
 
-function createGameServer({ rooms = new Rooms(), inviteOrigin = process.env.INVITE_ORIGIN } = {}) {
+function createGameServer({ rooms = new Rooms(), inviteOrigin = process.env.INVITE_ORIGIN, customCardArt } = {}) {
   const publishedOrigin = typeof inviteOrigin === "function" ? inviteOrigin : () => inviteOrigin ? new URL(inviteOrigin).origin : null;
   const server = http.createServer({ requestTimeout: 10_000, headersTimeout: 8_000 }, async (request, response) => {
     response.setHeader("X-Content-Type-Options", "nosniff");
@@ -126,8 +127,21 @@ function createGameServer({ rooms = new Rooms(), inviteOrigin = process.env.INVI
         }
         throw new RoomError(405, "INVALID_REQUEST");
       }
-      if (method === "GET" || method === "HEAD") serveFile(request, response, target.pathname);
-      else throw new RoomError(405, "INVALID_REQUEST");
+      if (method !== "GET" && method !== "HEAD") throw new RoomError(405, "INVALID_REQUEST");
+      const cardPath = /^\/assets\/cards\/([a-z0-9-]+\.png)$/.exec(target.pathname);
+      if (cardPath && customCardArt) {
+        const bytes = await customCardArt(cardPath[1]);
+        if (bytes) {
+          response.writeHead(200, {
+            "Content-Type": "image/png",
+            "Content-Length": bytes.length,
+            "Cache-Control": "no-store",
+          });
+          response.end(method === "HEAD" ? undefined : bytes);
+          return;
+        }
+      }
+      serveFile(request, response, target.pathname);
     } catch (error) {
       if (!(error instanceof RoomError)) console.error(error);
       if (!response.headersSent && !response.destroyed) {
