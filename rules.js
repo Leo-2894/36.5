@@ -91,20 +91,38 @@ const GameRules = (() => {
     return "";
   }
 
-  function drawCandidates(player, slot) {
-    const names = new Set(player.hand.filter((card, index) => card && index !== slot).map(card => card.id));
+  function drawCandidate(player, slot, excludeId) {
+    const names = new Set();
+    let hasUsableCard = false;
+    for (let index = 0; index < player.hand.length; index++) {
+      const card = player.hand[index];
+      if (index === slot || !card) continue;
+      names.add(card.id);
+      if (alwaysUsable(card)) hasUsableCard = true;
+    }
     for (const card of player.usedThisTurn) names.add(card.id);
     if (player.pending) names.add(player.pending.card.id);
-    const hasUsableCard = player.hand.some((card, index) => index !== slot && alwaysUsable(card));
-    const groups = [[], [], [], []];
 
-    for (const [index, card] of player.deck.entries()) {
-      const duplicate = names.has(card.id) ? 1 : 0;
-      const leavesOnlyConditionalCards = hasUsableCard || alwaysUsable(card) ? 0 : 2;
-      const group = duplicate + leavesOnlyConditionalCards;
-      groups[group].push(index);
+    let best;
+    let priority = 4;
+    for (let index = 0; index < player.deck.length; index++) {
+      const card = player.deck[index];
+      if (card.id === excludeId) continue;
+      const rank = Number(names.has(card.id)) + (hasUsableCard || alwaysUsable(card) ? 0 : 2);
+      if (rank === 0) return index;
+      if (rank < priority) {
+        best = index;
+        priority = rank;
+      }
     }
-    return groups.flat();
+    return best;
+  }
+
+  function expireStatuses(player) {
+    for (const status of player.statuses) {
+      if (status.firstTurn <= player.turnsTaken) status.remaining--;
+    }
+    player.statuses = player.statuses.filter(status => status.remaining > 0);
   }
 
   function temperatureDelta(player, amount) {
@@ -181,10 +199,7 @@ const GameRules = (() => {
       const player = this.currentPlayer;
       if (this.gameOver || player.pending || player.turnsTaken === 0) return false;
 
-      for (const status of player.statuses) {
-        if (status.firstTurn <= player.turnsTaken) status.remaining--;
-      }
-      player.statuses = player.statuses.filter(status => status.remaining > 0);
+      expireStatuses(player);
       this.activeIndex = 1 - this.activeIndex;
       if (this.current === this.starter) {
         this.turn++;
@@ -206,12 +221,11 @@ const GameRules = (() => {
 
     drawInto(player, slot, swap = false) {
       this.recycle(player);
-      const candidates = drawCandidates(player, slot);
-      let index = candidates[0];
+      const index = drawCandidate(player, slot);
 
       if (swap && index !== undefined) {
         const previous = player.deck[index];
-        const replacement = candidates.find(candidate => player.deck[candidate].id !== previous.id);
+        const replacement = drawCandidate(player, slot, previous.id);
         if (replacement !== undefined) {
           const [card] = player.deck.splice(replacement, 1);
           const adjusted = replacement < index ? index - 1 : index;
@@ -230,7 +244,7 @@ const GameRules = (() => {
 
     preview(player) {
       const slot = player.pending?.index ?? player.hand.indexOf(null);
-      return player.deck[drawCandidates(player, slot)[0]] ?? null;
+      return player.deck[drawCandidate(player, slot)] ?? null;
     }
 
     playableIndices(player = this.currentPlayer) {
@@ -433,14 +447,77 @@ const GameRules = (() => {
     return score;
   }
 
+  function blizzardLossRisk(match, player, card) {
+    // Preview the same effects as the real turn without drawing or advancing RNG.
+    const count = card?.target === "random" ? 2 : card?.range ? card.range[1] - card.range[0] + 1 : 1;
+    const statusOptions = card?.chance === undefined ? [[0.5, 1]] :
+      [[0, card.chance], [1, 1 - card.chance]];
+    let risk = 0;
+    for (let outcome = 0; outcome < count; outcome++) {
+      for (const [statusRoll, weight] of statusOptions) {
+        const roll = (outcome + 0.5) / count;
+        let needsTemperatureRoll = Boolean(card?.range || card?.target === "random");
+        const preview = Object.assign(Object.create(Match.prototype), {
+          players: match.players.map(side => ({
+            ...side, statuses: side.statuses.map(status => ({ ...status })),
+          })),
+          activeIndex: match.activeIndex,
+          blizzardCount: match.blizzardCount,
+          winner: null,
+          onEvent() {},
+          random() {
+            if (!needsTemperatureRoll) return statusRoll;
+            needsTemperatureRoll = false;
+            return roll;
+          },
+        });
+        if (card) preview.applyCard(preview.currentPlayer, card);
+        preview.checkResult();
+        if (!preview.gameOver) {
+          expireStatuses(preview.currentPlayer);
+          preview.blizzard();
+        }
+        if (preview.winner === match.opponentOf(player).name) risk += weight / count;
+      }
+    }
+    return risk;
+  }
+
   function chooseCard(match, player = match.currentPlayer) {
     let best = -1;
     let highest = -0.75; // Passing is preferable to a likely self-inflicted loss.
-    for (const index of match.playableIndices(player)) {
+    const indices = match.playableIndices(player);
+    const scores = [];
+    for (const index of indices) {
       const score = scoreCard(match, player, player.hand[index]) + match.random() * 0.3;
+      scores[index] = score;
       if (score > highest) {
         best = index;
         highest = score;
+      }
+    }
+    const blizzardNext = player === match.currentPlayer && player.name !== match.starter &&
+      (match.turn + 1) % SETTINGS.blizzardInterval === 0;
+    const finalAction = player.actionsUsed + 1 >= maxActions(player);
+    const maxDamage = half(-(blizzardDamage(match.blizzardCount + 1) + 2) * SETTINGS.maxDamageMultiplier);
+    if (!blizzardNext || (best !== -1 && (!finalAction || player.hand[best].free)) ||
+        player.temp + maxDamage > SETTINGS.lossTemp) return best;
+
+    let risk = blizzardLossRisk(match, player, player.hand[best]);
+    if (risk === 0) return best;
+    const passRisk = best === -1 ? risk : blizzardLossRisk(match, player);
+    if (passRisk < risk) {
+      best = -1;
+      highest = -0.75;
+      risk = passRisk;
+    }
+    for (const index of indices) {
+      if (index === best || player.hand[index].free || !finalAction) continue;
+      const candidateRisk = blizzardLossRisk(match, player, player.hand[index]);
+      if (candidateRisk < risk - 1e-9 || (Math.abs(candidateRisk - risk) < 1e-9 && scores[index] > highest)) {
+        best = index;
+        risk = candidateRisk;
+        highest = scores[index];
       }
     }
     return best;

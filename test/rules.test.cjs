@@ -18,6 +18,35 @@ function play(match, id) {
   return match.confirm();
 }
 
+test('AI saves its last action for recovery when the next blizzard would be fatal', () => {
+  const { match } = start();
+  match.turn = 2;
+  match.finishTurn();
+  match.p1.temp = 33;
+  match.p2.temp = 26.5;
+  match.p2.actionsUsed = 1;
+  match.p2.hand = ['ice-pack', 'roasted-chestnuts', 'mint-candy', 'tylenol'].map(card);
+  const best = chooseCard(match);
+  assert.equal(match.p2.hand[best].id, 'roasted-chestnuts');
+  assert.equal(match.p2.temp, 26.5);
+  assert.equal(match.blizzardCount, 0);
+  match.stage(best);
+  match.confirm();
+  assert.equal(match.p2.temp, 26);
+  assert.equal(match.gameOver, false);
+});
+
+test('AI still takes a guaranteed win before the blizzard', () => {
+  const { match } = start();
+  match.turn = 2;
+  match.finishTurn();
+  match.p1.temp = 27;
+  match.p2.temp = 26.5;
+  match.p2.actionsUsed = 1;
+  match.p2.hand = ['ice-pack', 'roasted-chestnuts', 'water-gun', 'hot-air-blower'].map(card);
+  assert.equal(chooseCard(match), 0);
+});
+
 test('both players start with the same 80-card pool and four distinct cards', () => {
   const { match } = start();
   assert.equal(cards.length, 32);
