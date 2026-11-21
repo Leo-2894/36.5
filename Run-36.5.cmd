@@ -1,9 +1,10 @@
 @echo off
 setlocal
 title 36.5 Launcher
+set "GAME_BUILD=%~dp036.5\resources\app.asar"
 powershell.exe -NoLogo -NoProfile -NonInteractive -Command ^
   "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';" ^
-  "$root = Join-Path $env:LOCALAPPDATA '36.5'; $install = Join-Path $root '36.5-v1.2.3-win'; $exe = Join-Path $install '36.5.exe';" ^
+  "$root = Join-Path $env:LOCALAPPDATA '36.5'; $install = Join-Path $root '36.5-v1.2.3-win'; if (Test-Path -LiteralPath $env:GAME_BUILD -PathType Leaf) { $buildHash = (Get-FileHash -LiteralPath $env:GAME_BUILD -Algorithm SHA256).Hash; $install = Join-Path $root ('build-' + $buildHash) }; $exe = Join-Path $install '36.5.exe';" ^
   "if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {" ^
   "  Write-Host 'Downloading 36.5 v1.2.3. Please wait...';" ^
   "  New-Item -ItemType Directory -Path $root -Force | Out-Null;" ^
@@ -17,6 +18,7 @@ powershell.exe -NoLogo -NoProfile -NonInteractive -Command ^
   "    if ($hash -ne '932F48201DF18280DE4CB5453C4B8B1014363AFAB8E2C633554A10E17D17220F') { throw 'Download checksum mismatch.' };" ^
   "    Add-Type -AssemblyName System.IO.Compression.FileSystem; [IO.Compression.ZipFile]::ExtractToDirectory($zip, $out);" ^
   "    $ready = Join-Path $out '36.5-v1.2.3-win'; if (!(Test-Path -LiteralPath (Join-Path $ready '36.5.exe') -PathType Leaf)) { throw 'Game executable is missing.' };" ^
+  "    if ($buildHash) { $app = Join-Path $ready 'resources\app.asar'; Copy-Item -LiteralPath $env:GAME_BUILD -Destination $app -Force; if ((Get-FileHash -LiteralPath $app).Hash -ne $buildHash) { throw 'Game build checksum mismatch.' } };" ^
   "    try { [IO.Directory]::Move($ready, $install) } catch { if (!(Test-Path -LiteralPath $exe -PathType Leaf)) { throw } };" ^
   "  } finally { if ([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($stage)) -eq [IO.Path]::GetFullPath($root)) { Remove-Item -LiteralPath $stage -Recurse -Force } };" ^
   "}; Start-Process -FilePath $exe -WorkingDirectory $install;"
