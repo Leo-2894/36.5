@@ -18,14 +18,15 @@ function play(match, id) {
   return match.confirm();
 }
 
-test('both players start with the same 77-card pool and four distinct cards', () => {
+test('both players start with the same 80-card pool and four distinct cards', () => {
   const { match } = start();
-  assert.equal(cards.length, 31);
+  assert.equal(cards.length, 32);
   assert.equal(card('torn-coat'), undefined);
+  assert.equal(card('clothing-damage').status, '옷 파손');
   assert.equal(cards.filter(item => item.type === '체온 상승').reduce((total, item) => total + item.copies, 0), 24);
   for (const player of match.players) {
     assert.equal(player.temp, 36.5);
-    assert.equal(player.deck.length, 73);
+    assert.equal(player.deck.length, 76);
     assert.equal(new Set(player.hand.map(item => item.id)).size, 4);
   }
 });
