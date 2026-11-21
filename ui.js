@@ -105,6 +105,7 @@ function handleEvent(event) {
       break;
     case "card":
       log(player.name + " 카드 사용 · " + card.name);
+      showCardCast(player, card);
       if (card.type === "스페셜") showSpecialCardEffect(card.name);
       break;
     case "draw":
@@ -236,7 +237,7 @@ function resetMatch() {
   get("screenFlash").className = "screen-flash";
   clearDragVisuals();
   clearResultEffects();
-  document.querySelectorAll(".temp-burst, .temp-float, .effect-pop, .russian-hit, .object-effect").forEach(effect => effect.remove());
+  document.querySelectorAll(".cast-seal, .thermal-impact, .temp-burst, .temp-float, .effect-pop, .russian-hit, .object-effect").forEach(effect => effect.remove());
   document.querySelectorAll(".rh-shake").forEach(panel => panel.classList.remove("rh-shake"));
   hideEndingScene();
   drawnSlot = null;
@@ -381,7 +382,12 @@ function renderPlayer(player) {
   temp.textContent = player.temp.toFixed(1) + "°C";
   temp.className = "temp" + (player.temp <= 30 ? " danger" : player.temp <= 34 ? " cold" : "");
   const percent = (player.temp - SETTINGS.lossTemp) / (SETTINGS.overheatTemp - SETTINGS.lossTemp) * 100;
-  get(prefix + "Bar").style.width = Math.max(0, Math.min(100, percent)) + "%";
+  const fill = Math.max(0, Math.min(100, percent));
+  get(prefix + "Bar").style.width = fill + "%";
+  const panel = temp.closest(".player");
+  panel.style.setProperty("--reading", fill * 2.7 + "deg");
+  panel.dataset.thermal = player.temp >= SETTINGS.reducedHealingTemp ? "hot" : player.temp <= 34 ? "cold" : "steady";
+  panel.classList.toggle("taking-turn", !match.gameOver && match.currentPlayer?.name === player.name);
   get(prefix + "Deck").textContent = player.deckCount ?? player.deck.length;
   get(prefix + "Discard").textContent = player.discardCount ?? player.discard.length;
   get(prefix + "Badge").textContent = onlineSide ? (player.name === onlineSide ? "내 자리" : "상대 자리") : player.isAI ? "AI" : "플레이어";
@@ -583,10 +589,38 @@ function showBurst(player, text, kind) {
   setTimeout(() => burst.remove(), 1400);
 }
 
+function showCardCast(player, card) {
+  const slot = get(playerPrefix(player) + "Slot").closest(".slot");
+  const seal = document.createElement("div");
+  seal.className = "cast-seal";
+  seal.dataset.tone = card.temp > 0 ? "heat" : card.temp < 0 ? "ice" : "arcane";
+  seal.setAttribute("aria-hidden", "true");
+  seal.textContent = card.name;
+  slot.querySelector(".cast-seal")?.remove();
+  slot.append(seal);
+  setTimeout(() => seal.remove(), 1050);
+}
+
+function showThermalImpact(anchor, tone) {
+  const impact = document.createElement("span");
+  impact.className = "thermal-impact";
+  impact.dataset.tone = tone;
+  impact.setAttribute("aria-hidden", "true");
+  for (let i = 0; i < 8; i++) {
+    const shard = document.createElement("i");
+    shard.style.setProperty("--angle", (i * 45 + 22.5) + "deg");
+    impact.append(shard);
+  }
+  anchor.querySelector(".thermal-impact")?.remove();
+  anchor.append(impact);
+  setTimeout(() => impact.remove(), 800);
+}
+
 function showTempFloat(player, delta) {
   const panel = document.getElementById(playerPrefix(player) + "Temp")?.closest(".player");
   if (!panel) return;
 
+  if (delta) showThermalImpact(panel.querySelector(".bar"), delta > 0 ? "heat" : "ice");
   const floatEl = document.createElement("div");
   if (delta === 0) {
     floatEl.className = "temp-float no-change";

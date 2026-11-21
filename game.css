@@ -4282,3 +4282,82 @@ button:focus-visible {
   }
 }
 
+
+/* Temperature instrument, card activation and resolved impact. */
+.game .player {
+  --signal: #7df0c3;
+  background: radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--signal) 15%, transparent), transparent 55%), linear-gradient(155deg,#172938ed,#0d1826f5) !important;
+}
+.player[data-thermal="cold"] { --signal: #8bdcff; }
+.player[data-thermal="hot"] { --signal: #ff9a63; }
+.game .player[data-thermal="cold"] { --signal: #8bdcff; }
+.game .player[data-thermal="hot"] { --signal: #ff9a63; }
+.game .player.taking-turn { border-color: var(--signal) !important; }
+.game .player::before {
+  content: "°C";
+  box-sizing: border-box;
+  align-content: center;
+  text-align: center;
+  font: 650 22px/1 "Segoe UI", sans-serif;
+  letter-spacing: .04em;
+  color: var(--signal);
+  background:
+    radial-gradient(circle, #132632 0 46%, transparent 47%),
+    repeating-conic-gradient(from 225deg, transparent 0 13deg, #101f2b 13deg 15deg),
+    conic-gradient(from 225deg, var(--signal) 0 var(--reading), #364958 var(--reading) 270deg, #152530 270deg) !important;
+  border: 6px solid #192c38 !important;
+  box-shadow: 0 0 0 1px #6e8b965c, inset 0 0 0 4px #172a35, 0 10px 24px #05121d85 !important;
+}
+.game .player .bar { overflow: visible; background: #344857 !important; }
+.player .bar-inner { height: 100%; border-radius: inherit; background: linear-gradient(90deg,#416c80,var(--signal)) !important; transition: width .42s ease; }
+.player .temp { font-variant-numeric: tabular-nums; }
+.game .center {
+  background: radial-gradient(ellipse at top left,#29465e90,transparent 54%), linear-gradient(155deg,#182c3bea,#101c2bef) !important;
+}
+.field .slot {
+  position: relative;
+  background: linear-gradient(145deg,#25405299,#112332c9) !important;
+}
+.hand-heading h3 { letter-spacing: .04em; }
+#actionCount { font-variant-numeric: tabular-nums; }
+#endBtn.confirm-ready { background: linear-gradient(110deg,#8df2d5,#a8dfff) !important; color: #102b37 !important; }
+[data-tone="heat"] { --spark: #ffc077; }
+[data-tone="ice"] { --spark: #85e5ff; }
+[data-tone="arcane"] { --spark: #d5adff; }
+.cast-seal {
+  position: absolute; inset: 0; z-index: 4; pointer-events: none;
+  display: grid; place-content: center; padding: .5em;
+  text-align: center; text-wrap: balance; word-break: keep-all;
+  border: 1px solid var(--spark); border-radius: inherit;
+  background: radial-gradient(ellipse at center,#172a39 12%,#142433f5 58%,color-mix(in srgb,var(--spark) 35%,#122330));
+  color: var(--spark); font-size: clamp(14px,2vw,24px); font-weight: 800;
+  animation: seal-play 1.05s both;
+}
+.cast-seal::after {
+  content: ""; width: 48%; height: 2px; margin: 7px auto 0;
+  background: linear-gradient(90deg,transparent,var(--spark),transparent);
+}
+.thermal-impact {
+  position: absolute; top: 50%; left: 50%; pointer-events: none; z-index: 6;
+}
+.thermal-impact i {
+  position: absolute; width: 3px; height: 9px; background: var(--spark);
+  border-radius: 90% 10%; box-shadow: 0 0 6px var(--spark);
+  animation: impact-shard .78s ease-out both;
+}
+.thermal-impact[data-tone="heat"] i { width: 5px; height: 5px; border-radius: 50%; }
+@keyframes impact-shard {
+  from { opacity: 0; transform: rotate(var(--angle)) translateY(-3px); }
+  15% { opacity: 1; }
+  to { opacity: 0; transform: rotate(var(--angle)) translateY(-41px) scale(.45); }
+}
+@keyframes seal-play {
+  0% { opacity: 0; transform: scale(.94); }
+  16%,72% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cast-seal { animation: none; }
+  .thermal-impact, .object-effect, .screen-flash, .russian-hit, .snow { display: none !important; }
+  .player .bar-inner { transition: none; }
+}
