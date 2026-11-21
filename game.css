@@ -4445,3 +4445,7 @@ button:focus-visible {
   .cast-seal[data-special]::after, .cast-seal[data-special] *::before { animation: none !important; }
   .cast-seal[data-special]::after { display: none; }
 }
+
+.custom-card-asset, .preview .mini-card img {
+  image-rendering: pixelated;
+}
