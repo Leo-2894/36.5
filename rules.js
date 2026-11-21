@@ -48,7 +48,6 @@ const GameRules = (() => {
     { id: "tylenol", name: "타이레놀", type: "효과", target: "self", removeDebuff: true, desc: "자신에게 걸린 가장 오래된 디버프 제거" },
     { id: "electric-fan", name: "선풍기", type: "효과", target: "opponent", status: "선풍기", periodic: -1, turns: 3, copies: 2, desc: "다음 상대 차례부터 3회, 차례 시작 시 -1°C" },
     { id: "frostbite-patch", name: "파스", type: "효과", target: "opponent", status: "동상", turns: 2, desc: "상대에게 동상 2턴" },
-    { id: "torn-coat", name: "찢어진 외투", type: "효과", target: "opponent", status: "옷 파손", turns: 2, desc: "상대에게 옷 파손 2턴" },
     { id: "swap", name: "교체 카드", type: "스페셜", target: "self", free: true, copies: 1, desc: "다음 카드 후보를 덱 뒤로 보내고 다른 카드를 뽑습니다. 행동 횟수 무료" },
     { id: "turn-control", name: "상대 턴 통제 카드", type: "스페셜", target: "opponent", status: "행동 제한", turns: 1, copies: 1, desc: "상대의 다음 차례 행동 횟수 2회 → 1회" },
     { id: "recovery-lock", name: "회복 제한 카드", type: "스페셜", target: "opponent", status: "회복 제한", turns: 1, copies: 1, desc: "상대의 다음 차례에 회복 카드 사용 불가" },
