@@ -24,6 +24,9 @@ let onlineDeadline = null;
 let onlineNotice = "";
 const cardById = new Map(GameRules.cards.map(card => [card.id, card]));
 const cardArtUrl = card => (window.desktopOnline ? "card-art://local/" : "assets/cards/") + card.id + ".png";
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+const slotLayouts = new WeakMap();
+const cardTones = { "체온 상승": "heat", "체온 저하": "ice", "복불복": "chance", "효과": "status", "자폭": "fracture", "스페셜": "rare" };
 
 try {
   const savedLanguage = localStorage.getItem("36.5.language");
@@ -240,7 +243,8 @@ function resetMatch() {
   get("screenFlash").className = "screen-flash";
   clearDragVisuals();
   clearResultEffects();
-  document.querySelectorAll(".cast-seal, .thermal-impact, .temp-burst, .temp-float, .effect-pop, .russian-hit, .object-effect").forEach(effect => effect.remove());
+  document.querySelectorAll(".placement-flight, .cast-seal, .thermal-impact, .temp-burst, .temp-float, .effect-pop, .russian-hit, .object-effect").forEach(effect => effect.remove());
+  for (const id of ["p1Slot", "p2Slot"]) slotLayouts.delete(get(id));
   document.querySelectorAll(".rh-shake").forEach(panel => panel.classList.remove("rh-shake"));
   hideEndingScene();
   drawnSlot = null;
@@ -336,18 +340,40 @@ function receiveOnlineState(state, events, requestMs) {
 
 async function stageHumanCard(index, keyboard = false) {
   if (!ownsTurn()) return;
+  const session = match;
+  const player = match.currentPlayer;
+  const origin = !activeDrag && !reducedMotion.matches
+    ? get("hand").querySelector('[data-hand-index="' + index + '"]')?.getBoundingClientRect() : null;
   if (onlineSide) {
     clearDragVisuals();
-    if (!await Online.action("stage", { index })) return;
-    playSound("card-move.m4a", 0.85);
-    if (keyboard) get("endBtn").focus();
-    return;
+    if (!await Online.action("stage", { index }) || match !== session || match.currentPlayer.pending?.index !== index) return;
+  } else {
+    if (!match.stage(index)) return;
+    clearDragVisuals();
+    render();
   }
-  if (!match.stage(index)) return;
   playSound("card-move.m4a", 0.85);
-  clearDragVisuals();
-  render();
+  if (origin) animatePlacement(origin, get(playerPrefix(player) + "Slot").querySelector(".pending img"));
   if (keyboard) get("endBtn").focus();
+}
+
+function animatePlacement(origin, thumbnail) {
+  if (!thumbnail || reducedMotion.matches) return;
+  const target = thumbnail.getBoundingClientRect();
+  if (!target.width || !target.height) return;
+  const flight = thumbnail.cloneNode();
+  flight.className = "placement-flight";
+  flight.setAttribute("aria-hidden", "true");
+  Object.assign(flight.style, { left: target.x + "px", top: target.y + "px", width: target.width + "px", height: target.height + "px" });
+  document.body.append(flight);
+  const dx = origin.x + origin.width / 2 - target.x - target.width / 2;
+  const dy = origin.y + origin.height / 2 - target.y - target.height / 2;
+  const scale = Math.min(2.4, origin.height / target.height);
+  const motion = flight.animate([
+    { transform: `translate(${dx}px,${dy}px) rotate(-5deg) scale(${scale})`, opacity: .82 },
+    { transform: "none", opacity: 1 },
+  ], { duration: 270, easing: "cubic-bezier(.22,.72,.3,1)" });
+  motion.onfinish = () => flight.remove();
 }
 
 async function confirmOrPass(event) {
@@ -493,7 +519,10 @@ function renderHand(player) {
         event.dataTransfer.effectAllowed = "move";
         activeDrag = { index, session: match, ghost: createDragGhost(shell, event) };
         document.body.classList.add("is-dragging-card");
-        get(playerPrefix(player) + "Slot").closest(".slot").classList.add("drop-candidate");
+        const zone = get(playerPrefix(player) + "Slot").closest(".slot");
+        zone.dataset.tone = cardTones[card.type];
+        if (card.type === "스페셜") zone.dataset.special = card.id;
+        zone.classList.add("drop-candidate");
         requestAnimationFrame(() => {
           if (activeDrag?.index === index && shell.isConnected) shell.classList.add("dragging");
         });
@@ -510,20 +539,34 @@ function renderHand(player) {
 
 function renderSlot(player) {
   const slot = get(playerPrefix(player) + "Slot");
+  const layout = JSON.stringify([player.usedThisTurn.map(card => card.id), player.pending?.card.id, player.pending?.index]);
+  if (slotLayouts.get(slot) === layout) return;
+  slotLayouts.set(slot, layout);
+  if (player.pending) slot.parentElement.querySelector(".cast-seal")?.remove();
+  document.querySelector(".placement-flight")?.remove();
   const cards = player.usedThisTurn.map(card => ({ card, pending: false }));
   if (player.pending) cards.push({ card: player.pending.card, pending: true });
   slot.replaceChildren(...cards.map(({ card, pending }) => {
     const tile = document.createElement("div");
     tile.className = "slot-card" + (pending ? " pending" : "");
-    tile.textContent = card.name + (pending ? " · 대기" : "");
+    tile.dataset.tone = cardTones[card.type];
+    if (card.type === "스페셜") tile.dataset.special = card.id;
+    const label = document.createElement("span");
+    label.textContent = card.name + (pending ? " · 대기" : "");
     if (pending) {
+      const art = document.createElement("img");
+      art.src = cardArtUrl(card);
+      art.alt = "";
+      tile.append(art);
       const detail = document.createElement("small");
       detail.className = "slot-card-detail";
       detail.textContent = card.desc;
-      tile.append(detail);
+      label.append(detail);
     }
+    tile.append(label);
     return tile;
   }));
+  if (player.pending) slot.scrollTop = slot.scrollHeight;
 }
 
 function render() {
@@ -623,7 +666,7 @@ function showCardCast(player, card) {
   const slot = get(playerPrefix(player) + "Slot").closest(".slot");
   const seal = document.createElement("div");
   seal.className = "cast-seal";
-  seal.dataset.tone = card.temp > 0 ? "heat" : card.temp < 0 ? "ice" : "arcane";
+  seal.dataset.tone = cardTones[card.type];
   seal.setAttribute("aria-hidden", "true");
   const special = card.type === "스페셜";
   if (special) {
@@ -631,10 +674,32 @@ function showCardCast(player, card) {
     const emblem = document.createElement("span");
     emblem.className = "special-emblem";
     emblem.append(document.createElement("i"), document.createElement("b"));
-    const title = document.createElement("strong");
-    title.textContent = card.name;
-    seal.append(emblem, title);
-  } else seal.textContent = card.name;
+    seal.append(emblem);
+  } else {
+    const art = document.createElement("img");
+    art.src = cardArtUrl(card);
+    art.alt = "";
+    seal.append(art);
+  }
+  const title = document.createElement("strong");
+  title.textContent = card.name;
+  seal.append(title);
+  if (!reducedMotion.matches) {
+    const sparks = document.createElement("span");
+    sparks.className = "cast-sparks";
+    for (let index = 0; index < (special ? 12 : 8); index++) {
+      const pixel = document.createElement("i");
+      const side = index % 2 === 0 ? -1 : 1;
+      const lane = Math.floor(index / 2);
+      pixel.style.left = (50 + side * (20 + lane % 3 * 10)) + "%";
+      pixel.style.top = (22 + (lane * 19 + (side + 1) * 7) % 60) + "%";
+      pixel.style.setProperty("--dx", side * (10 + lane * 2) + "px");
+      pixel.style.setProperty("--dy", (card.type === "체온 상승" ? -15 : card.type === "체온 저하" ? 14 : lane % 2 ? 11 : -11) + "px");
+      pixel.style.animationDelay = (lane * 35) + "ms";
+      sparks.append(pixel);
+    }
+    seal.append(sparks);
+  }
   slot.querySelector(".cast-seal")?.remove();
   slot.append(seal);
   setTimeout(() => seal.remove(), special ? 1550 : 1050);
@@ -659,7 +724,7 @@ function showTempFloat(player, delta) {
   const panel = document.getElementById(playerPrefix(player) + "Temp")?.closest(".player");
   if (!panel) return;
 
-  if (delta) showThermalImpact(panel.querySelector(".bar"), delta > 0 ? "heat" : "ice");
+  if (delta && !reducedMotion.matches) showThermalImpact(panel.querySelector(".bar-inner"), delta > 0 ? "heat" : "ice");
   const floatEl = document.createElement("div");
   if (delta === 0) {
     floatEl.className = "temp-float no-change";
@@ -842,6 +907,8 @@ function clearDragVisuals() {
   document.body.classList.remove("is-dragging-card");
   document.querySelectorAll(".drop-candidate, .drop-ready").forEach(el => {
     el.classList.remove("drop-candidate", "drop-ready");
+    delete el.dataset.tone;
+    delete el.dataset.special;
   });
 }
 
