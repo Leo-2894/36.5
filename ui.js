@@ -17,7 +17,6 @@ const handSlots = [];
 let hoveredCard = null;
 let activeDrag = null;
 let bgm = null;
-let snowTimer;
 let flashTimer;
 const shakeTimers = new WeakMap();
 let onlineSide = null;
@@ -131,7 +130,13 @@ function handleEvent(event, live = true) {
       break;
     case "card":
       log(player.name + " 카드 사용 · " + card.name);
-      if (live) showCardCast(player, card);
+      if (live) {
+        showCardCast(player, card);
+        const wave = get("battleWave");
+        wave.dataset.tone = cardTones[card.type];
+        wave.getAnimations().forEach(animation => animation.cancel());
+        if (!reducedMotion.matches) wave.animate([{ opacity: .85 }, { opacity: 0 }], { duration: 650 });
+      }
       break;
     case "draw":
       if (live && !player.isAI) drawnSlot = event.index;
@@ -179,9 +184,6 @@ function handleEvent(event, live = true) {
     case "blizzard":
       if (live) {
         playSound("blizzard.mp3", 0.9);
-        clearTimeout(snowTimer);
-        get("snow").classList.add("active");
-        snowTimer = setTimeout(() => get("snow").classList.remove("active"), 900);
       }
       log("Blizzard #" + event.count + " · 기본 피해 -" + event.damage + "°C", "danger");
       break;
@@ -214,6 +216,16 @@ function scheduleTurn() {
   if (!match || match.gameOver) return;
 
   const session = match;
+  if (session.storm) {
+    get("timer").textContent = "–";
+    turnTimer = setTimeout(() => {
+      if (match !== session) return;
+      session.advanceStorm();
+      render();
+      scheduleTurn();
+    }, session.storm === "warning" ? SETTINGS.stormDelay : SETTINGS.stormDuration);
+    return;
+  }
   if (session.currentPlayer.isAI) {
     turnTimer = setTimeout(() => {
       if (match !== session || session.gameOver || !session.currentPlayer.isAI) return;
@@ -265,7 +277,7 @@ function resetMatch() {
   onlineSide = null;
   clearTimeout(endingTimer);
   clearTimeout(flashTimer);
-  clearTimeout(snowTimer);
+  get("stormNotice").hidden = true;
   get("snow").classList.remove("active");
   get("screenFlash").className = "screen-flash";
   clearDragVisuals();
@@ -294,7 +306,7 @@ function revealBoard() {
 function startMatch() {
   resetMatch();
   revealBoard();
-  match = new Match({ onEvent: handleEvent });
+  match = new Match({ onEvent: handleEvent, timedStorms: true });
   match.start();
   render();
   scheduleTurn();
@@ -313,7 +325,7 @@ function returnToMainMenu(event) {
 }
 
 function ownsTurn() {
-  return match && !match.gameOver && !match.currentPlayer.isAI && (!onlineSide || match.current === onlineSide);
+  return match && !match.gameOver && !match.storm && !match.currentPlayer.isAI && (!onlineSide || match.current === onlineSide);
 }
 
 function updateOnlineClock() {
@@ -361,9 +373,10 @@ function receiveOnlineState(state, events, requestMs, restoring) {
   Object.assign(match, {
     players, currentPlayer: players.find(player => player.name === state.current),
     current: state.current, starter: state.starter, turn: state.turn,
+    storm: state.storm,
     blizzardCount: state.blizzardCount, gameOver: state.phase === "finished",
   });
-  onlineDeadline = state.remainingMs === null ? null : performance.now() + Math.max(0, state.remainingMs - requestMs / 2);
+  onlineDeadline = state.storm || state.remainingMs === null ? null : performance.now() + Math.max(0, state.remainingMs - requestMs / 2);
   for (const event of events) handleEvent({ ...event, card: card(event.card) }, !restoring);
   render();
 }
@@ -446,6 +459,8 @@ function renderPlayer(player) {
   const prefix = playerPrefix(player);
   const temp = get(prefix + "Temp");
   const panel = temp.closest(".player");
+  panel.classList.toggle("chained", hasStatus(player, "행동 제한"));
+  panel.classList.toggle("frosted", hasStatus(player, "동상"));
   if (playerReadings.get(panel) !== player.temp) {
     playerReadings.set(panel, player.temp);
     setText(temp, player.temp.toFixed(1) + "°C");
@@ -456,7 +471,7 @@ function renderPlayer(player) {
     panel.style.setProperty("--reading", fill * 2.7 + "deg");
     panel.dataset.thermal = player.temp >= SETTINGS.reducedHealingTemp ? "hot" : player.temp <= 34 ? "cold" : "steady";
   }
-  const takingTurn = !match.gameOver && match.currentPlayer?.name === player.name;
+  const takingTurn = !match.gameOver && !match.storm && match.currentPlayer?.name === player.name;
   panel.classList.toggle("taking-turn", takingTurn);
   setText(get(prefix + "Actions"), takingTurn
     ? remainingActions(player)
@@ -468,10 +483,17 @@ function renderPlayer(player) {
   const statusLayout = statusLabels.join("|");
   if (statusLayouts.get(statuses) !== statusLayout) {
     statusLayouts.set(statuses, statusLayout);
-    statuses.replaceChildren(...statusLabels.map(label => {
-      const item = document.createElement("span");
+    statuses.replaceChildren(...statusLabels.map((label, index) => {
+      const status = player.statuses[index];
+      const item = document.createElement("div");
       item.className = "status";
-      setText(item, label);
+      if (!status) { setText(item, label); return item; }
+      item.classList.add(isBuff(status.name) ? "benefit" : "penalty");
+      const title = document.createElement("strong");
+      setText(title, (isBuff(status.name) ? "＋ " : "− ") + label + "턴");
+      const effect = document.createElement("small");
+      setText(effect, statusEffects[status.name] ?? status.name);
+      item.append(title, effect);
       return item;
     }));
   }
@@ -499,6 +521,13 @@ function renderPlayer(player) {
     }
   }
 }
+
+const statusEffects = {
+  "보온": "받는 체온 피해 40% 감소", "옷 파손": "받는 체온 피해 25% 증가",
+  "몸살": "받는 피해 50% 증가 · 회복량 25% 감소", "동상": "회복량 40% 감소",
+  "핫팩": "내 차례 시작 시 +1°C", "선풍기": "내 차례 시작 시 −1°C",
+  "행동 제한": "한 차례에 행동 1회", "회복 제한": "회복 카드 사용 불가", "실명": "다음 카드 비공개",
+};
 
 function remainingActions(player) {
   const limit = maxActions(player);
@@ -677,6 +706,11 @@ function renderSlot(player) {
 
 function render() {
   if (!match) return;
+  const storm = !match.gameOver && match.storm;
+  get("stormNotice").hidden = !storm;
+  get("snow").classList.toggle("active", storm === "active");
+  if (storm) setText(get("stormText"), storm === "warning" ? "눈보라가 다가옵니다." :
+    "3라운드마다 양쪽 기본 피해 −" + GameRules.blizzardDamage(match.blizzardCount) + "°C");
   const step = match.turn % SETTINGS.blizzardInterval;
   const gauge = get("blizzardGauge");
   const progress = (step / SETTINGS.blizzardInterval * 100) + "%";

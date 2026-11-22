@@ -12,6 +12,8 @@
 <body class="game-not-started">
 <div class="screen-flash" id="screenFlash"></div>
 <div class="snow" id="snow"></div>
+<div id="battleWave" aria-hidden="true"></div>
+<aside id="stormNotice" role="status" hidden><strong>블리자드</strong><span id="stormText"></span></aside>
 
 <div class="start-menu" id="startMenu">
   <div class="main-menu-buttons">
@@ -143,8 +145,10 @@
   <div class="game">
     <section class="panel player">
       <h2>P1 <span class="ai-badge" id="p1Badge">플레이어</span></h2>
+      <div class="pilot heat-pilot" aria-hidden="true"><i></i></div>
       <div class="temp" id="p1Temp">36.5°C</div>
       <div class="bar"><div class="bar-inner" id="p1Bar"></div></div>
+      <div class="thermal-scale"><span>25°</span><span>36.5°</span><span>40°</span></div>
       <div class="status-row" id="p1Status"></div>
       <div class="turn-info">
         <div><span>남은 행동</span><b id="p1Actions">–</b></div>
@@ -211,8 +215,10 @@
 
     <section class="panel player">
       <h2>P2 <span class="ai-badge" id="p2Badge">AI</span></h2>
+      <div class="pilot cold-pilot" aria-hidden="true"><i></i></div>
       <div class="temp" id="p2Temp">36.5°C</div>
       <div class="bar"><div class="bar-inner" id="p2Bar"></div></div>
+      <div class="thermal-scale"><span>25°</span><span>36.5°</span><span>40°</span></div>
       <div class="status-row" id="p2Status"></div>
       <div class="turn-info">
         <div><span>남은 행동</span><b id="p2Actions">–</b></div>
