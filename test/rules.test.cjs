@@ -54,7 +54,7 @@ test('both players start with the same 80-card pool and four distinct cards', ()
   assert.equal(card('clothing-damage').status, '옷 파손');
   assert.equal(cards.filter(item => item.type === '체온 상승').reduce((total, item) => total + item.copies, 0), 24);
   for (const player of match.players) {
-    assert.equal(player.temp, 36.5);
+    assert.equal(player.temp, player.name === match.starter ? 36.5 : 38);
     assert.equal(player.deck.length, 76);
     assert.equal(new Set(player.hand.map(item => item.id)).size, 4);
   }
@@ -70,12 +70,12 @@ test('placement is reversible, confirmation uses exactly one action and refills 
   const preview = match.preview(p1);
   assert.equal(match.finishTurn(), false);
   assert.equal(match.stage(2), false);
-  assert.equal(p2.temp, 36.5);
+  assert.equal(p2.temp, 38);
   assert.equal(match.cancel(), true);
   assert.equal(p1.hand[1].id, 'ice-pack');
   assert.equal(match.stage(1), true);
   match.confirm();
-  assert.equal(p2.temp, 33);
+  assert.equal(p2.temp, 34.5);
   assert.equal(p1.actionsUsed, 1);
   assert.equal(p1.hand[1], preview);
   assert.equal(p1.discard[0].id, 'ice-pack');
@@ -114,6 +114,13 @@ test('Heat Pack and Electric Fan each trigger on three target turns', () => {
   }
 });
 
+test('Ice Bucket applies shorter frostbite to its user', () => {
+  const { match } = start();
+  play(match, 'ice-bucket');
+  assert.equal(match.p1.statuses.find(status => status.name === '동상').remaining, 1);
+  assert.equal(match.p2.statuses.find(status => status.name === '동상').remaining, 2);
+});
+
 test('refreshing a status preserves its expiry or extends it without stacking', () => {
   const { match } = start();
   match.applyStatus(match.p2, '몸살', 2);
@@ -144,7 +151,7 @@ test('expiry confirms the selected card, chooses a legal unselected card, or pas
   match.p1.hand = [card('mint-candy'), card('hot-air-blower'), card('hot-chocolate'), card('tylenol')];
   match.stage(0);
   match.timeOut();
-  assert.equal(match.p2.temp, 35);
+  assert.equal(match.p2.temp, 36.5);
   assert.equal(match.p1.pending, null);
   assert.equal(match.p1.actionsUsed, 1);
   match.p1.hand = [card('shaved-ice'), card('udon'), card('heat-pack'), card('hot-chocolate')];
