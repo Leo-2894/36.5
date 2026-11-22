@@ -1867,7 +1867,6 @@
     opacity: .72 !important;
     height: 320px !important;
     min-height: 320px !important;
-    align-self: stretch !important;
   }
   .card-shell.waiting-card .card-flip,
   .card-shell.waiting-card .card-face,
@@ -4036,14 +4035,16 @@ body:not(.game-not-started) .wrap {
   max-height: none !important;
 }
 
-.cards > .card-shell {
+#hand.cards > .card-shell {
   width: min(100%, 62cqh) !important;
   height: auto !important;
   min-width: 0 !important;
   max-width: 100% !important;
   aspect-ratio: 31 / 50;
-  place-self: center;
+  place-self: center !important;
 }
+
+.slot-card:not(.pending) { align-self: center; }
 
 /* Card artwork already includes its own rounded border. */
 .card-shell.asset-skin .card-front:has(.has-custom-asset) {
