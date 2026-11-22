@@ -80,6 +80,14 @@ const Online = (() => {
     } catch { return null; }
   }
 
+  function updateRoomCode(code) {
+    const url = new URL(location.href);
+    if (code) url.searchParams.set("room", code);
+    else url.searchParams.delete("room");
+    if (url.href !== location.href) history.replaceState(null, "", url);
+    get("inviteCode").value = code ?? "";
+  }
+
   function inviteLink() {
     if (!session || session.playing) return;
     const output = get("inviteLink");
@@ -130,6 +138,7 @@ const Online = (() => {
     room?.pollController?.abort();
     session = null;
     remember(null);
+    if (room) updateRoomCode(null);
   }
 
   function leave() {
@@ -162,6 +171,8 @@ const Online = (() => {
   function applyState(room, data, requestMs) {
     if (!data || session !== room || data.version <= room.version) return;
     room.version = data.version;
+    const restoring = room.restoring;
+    room.restoring = false;
     if (data.phase === "waiting") {
       showWaiting();
       return;
@@ -173,7 +184,7 @@ const Online = (() => {
     if (room.finished) room.pollController?.abort();
     const events = data.events.filter(event => event.id > room.eventId);
     if (events.length) room.eventId = events.at(-1).id;
-    receiveOnlineState(data, events, requestMs);
+    receiveOnlineState(data, events, requestMs, restoring);
   }
 
   function schedulePoll(room, delay = 650) {
@@ -221,9 +232,10 @@ const Online = (() => {
   }
 
   function startSession(credentials, data, requestMs = 0) {
-    const room = { ...credentials, version: 0, eventId: 0, playing: false, finished: false, sending: false };
+    const room = { ...credentials, version: 0, eventId: 0, playing: false, finished: false, sending: false, restoring: !data };
     session = room;
     remember(room);
+    updateRoomCode(room.code);
     applyState(room, data, requestMs);
     schedulePoll(room, data ? 350 : 0);
   }
