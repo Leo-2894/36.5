@@ -36,11 +36,11 @@ function setUp(random = () => 0.9) {
 test("both clients observe the storm before the next action clock starts", () => {
   const { rooms, code, host, tick, read, action } = setUp();
   const guest = rooms.join(code);
-  for (let i = 0; i < 6; i++) action(i % 2 ? host : guest, "pass");
-  assert.equal(read(host).storm, "warning");
-  tick(1499);
+  for (let i = 0; i < 5; i++) action(i % 2 ? host : guest, "pass");
+  assert.equal(read(host).turn, 2);
+  assert.equal(read(host).storm, null);
   assert.equal(read(guest).players[0].temp, 36.5);
-  tick(1);
+  action(host, "pass");
   assert.equal(read(host).storm, "active");
   assert.equal(read(guest).players[0].temp, 34.5);
   assert.throws(() => action(guest, "pass"), { code: "MATCH_UNAVAILABLE" });

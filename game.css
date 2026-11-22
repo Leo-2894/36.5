@@ -4474,3 +4474,41 @@ body.is-dragging-card .field .slot.drop-ready {
 #stormNotice span { font-size:15px; }
 .snow.active { opacity:.8; box-shadow:inset 0 0 90px #abdcff80; }
 @media(prefers-reduced-motion:reduce) { .chained .pilot::before,.chained .pilot::after { animation:none; } }
+/* Three depths of wind-driven snow share one gust envelope. */
+#snow {
+  overflow:hidden;
+  background:linear-gradient(115deg,#a6def938,transparent 42%,#e8fbff12);
+  box-shadow:inset 0 0 min(11vw,140px) #b7dcff74;
+  animation:none;
+  transition:none;
+  opacity:0;
+}
+#snow.active { animation:whiteout 3s ease-in-out both; }
+@keyframes whiteout {
+  0% {opacity:0} 24% {opacity:.67} 46% {opacity:.9} 66% {opacity:.7} 85% {opacity:.32} 100% {opacity:0}
+}
+#snow i {
+  display:none; position:absolute; left:var(--x); top:var(--y);
+  width:var(--size); height:var(--size); border-radius:45%;
+  background:#e4f7ff; opacity:var(--alpha);
+}
+#snow.active i { display:block; animation:snow-sweep var(--speed) linear var(--delay) infinite; }
+@keyframes snow-sweep {
+  0% {transform:translate(-22vw,-12vh) rotate(22deg) scaleX(1.2);opacity:0}
+  18% {opacity:var(--alpha)}
+  52% {transform:translate(1vw,1vh) rotate(24deg) scaleX(2.8)}
+  82% {opacity:var(--alpha)}
+  100% {transform:translate(25vw,10vh) rotate(14deg) scaleX(1.6);opacity:0}
+}
+#castTrail {position:fixed;inset:0;z-index:13;pointer-events:none;overflow:hidden}
+#castTrail canvas {position:absolute;top:0;left:0;opacity:0;image-rendering:pixelated;filter:drop-shadow(0 1px 2px #122039)}
+#blizzardGauge.forecast {border-color:#9cdeff!important;background:#173a50!important;}
+#blizzardGauge.forecast .blizzard-sub {color:#e7faff!important;font-weight:800}
+@media(max-width:800px) {
+  #blizzardGauge.forecast .blizzard-label {display:none}
+  #blizzardGauge.forecast .blizzard-sub {white-space:normal;line-height:1.15}
+}
+@media(prefers-reduced-motion:reduce) {
+  #snow.active {display:block!important;animation:none;opacity:.35}
+  #snow.active i {display:none}
+}

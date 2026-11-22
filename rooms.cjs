@@ -175,7 +175,7 @@ class Rooms {
     } else if (resetClock) {
       this.clearTimer(room);
       const storm = room.match.storm;
-      const delay = storm === "warning" ? SETTINGS.stormDelay : storm === "active" ? SETTINGS.stormDuration : SETTINGS.secondsPerAction * 1000;
+      const delay = storm === "active" ? SETTINGS.stormDuration : SETTINGS.secondsPerAction * 1000;
       room.deadline = this.now() + delay;
       this.armClock(room);
     }

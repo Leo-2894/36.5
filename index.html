@@ -11,7 +11,8 @@
 </head>
 <body class="game-not-started">
 <div class="screen-flash" id="screenFlash"></div>
-<div class="snow" id="snow"></div>
+<div class="snow" id="snow" aria-hidden="true"></div>
+<div id="castTrail" aria-hidden="true"></div>
 <div id="battleWave" aria-hidden="true"></div>
 <aside id="stormNotice" role="status" hidden><strong>블리자드</strong><span id="stormText"></span></aside>
 
@@ -233,6 +234,7 @@
 
 <script src="rules.js"></script>
 <script src="messages.js"></script>
+<script src="battle-effects.js"></script>
 <script src="ui.js"></script>
 <script src="online.js"></script>
 </body>

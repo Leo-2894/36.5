@@ -132,6 +132,9 @@ function handleEvent(event, live = true) {
       log(player.name + " 카드 사용 · " + card.name);
       if (live) {
         showCardCast(player, card);
+        const rival = player.name === "P1" ? "P2" : "P1";
+        if (card.target !== "random") BattleEffects.cast(card.id, player.name,
+          card.target === "both" ? [player.name, rival] : [card.target === "self" ? player.name : rival]);
         const wave = get("battleWave");
         wave.dataset.tone = cardTones[card.type];
         wave.getAnimations().forEach(animation => animation.cancel());
@@ -167,7 +170,10 @@ function handleEvent(event, live = true) {
       log(event.exchanged ? "다음 카드 교체" : "교체할 다음 카드가 부족합니다.");
       break;
     case "waterGun":
-      if (live) showRussianHit(player);
+      if (live) {
+        BattleEffects.cast("water-gun", event.caster ?? player.name, [player.name]);
+        showRussianHit(player);
+      }
       break;
     case "timeout":
       log("시간 초과 · 자동 확정 · " + card.name);
@@ -223,7 +229,7 @@ function scheduleTurn() {
       session.advanceStorm();
       render();
       scheduleTurn();
-    }, session.storm === "warning" ? SETTINGS.stormDelay : SETTINGS.stormDuration);
+    }, SETTINGS.stormDuration);
     return;
   }
   if (session.currentPlayer.isAI) {
@@ -279,6 +285,7 @@ function resetMatch() {
   clearTimeout(flashTimer);
   get("stormNotice").hidden = true;
   get("snow").classList.remove("active");
+  BattleEffects.clear();
   get("screenFlash").className = "screen-flash";
   clearDragVisuals();
   clearResultEffects();
@@ -709,14 +716,17 @@ function render() {
   const storm = !match.gameOver && match.storm;
   get("stormNotice").hidden = !storm;
   get("snow").classList.toggle("active", storm === "active");
-  if (storm) setText(get("stormText"), storm === "warning" ? "눈보라가 다가옵니다." :
-    "3라운드마다 양쪽 기본 피해 −" + GameRules.blizzardDamage(match.blizzardCount) + "°C");
+  if (storm) setText(get("stormText"), "3라운드마다 양쪽 기본 피해 −" + GameRules.blizzardDamage(match.blizzardCount) + "°C");
   const step = match.turn % SETTINGS.blizzardInterval;
   const gauge = get("blizzardGauge");
   const progress = (step / SETTINGS.blizzardInterval * 100) + "%";
   if (gauge.style.getPropertyValue("--blizzard-progress") !== progress) gauge.style.setProperty("--blizzard-progress", progress);
   setText(gauge.querySelector(".blizzard-label"), "Blizzard " + step + "/" + SETTINGS.blizzardInterval);
-  setText(gauge.querySelector(".blizzard-sub"), match.blizzardCount + "회 발동");
+  const forecast = !match.gameOver && !storm && step === SETTINGS.blizzardInterval - 1;
+  gauge.classList.toggle("forecast", forecast);
+  setText(gauge.querySelector(".blizzard-sub"), forecast
+    ? "다음 턴 시작 시 눈보라 · 양쪽 기본 피해 −" + GameRules.blizzardDamage(match.blizzardCount + 1) + "°C"
+    : match.blizzardCount + "회 발동");
   setText(get("turnInfo"), "인게임 턴 " + match.turn + " · " + match.starter + " 선공");
 
   for (const player of match.players) {
