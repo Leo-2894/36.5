@@ -125,3 +125,44 @@ test("leaving a waiting room closes it and leaving a live game awards a forfeit 
   assert.equal(result.events.at(-1).forfeited, "P2");
 });
 
+test("room watchers wake on updates, keep private events hidden and expire when idle", async () => {
+  const { rooms, host, code, read, action, tick } = setUp();
+  const signal = new AbortController().signal;
+  const waiting = rooms.watch(code, host.token, host.state.version, 0, signal);
+  const guest = rooms.join(code);
+  const initial = await waiting;
+  const cursor = initial.events.at(-1).id;
+  const watching = rooms.watch(code, host.token, initial.version, cursor, signal);
+  rooms.items.get(code).match.p2.hand[0] = cards.find(card => card.id === "ice-pack");
+  action(guest, "stage", { index: 0 });
+  const staged = await watching;
+  assert.deepEqual(staged.events, []);
+  assert.equal(Object.hasOwn(staged.players[1], "pending"), false);
+
+  const confirmed = rooms.watch(code, host.token, staged.version, cursor, signal);
+  action(guest, "confirm");
+  const update = await confirmed;
+  assert.equal(update.players[0].temp, 33);
+  assert.ok(update.events.some(event => event.card === "ice-pack"));
+  assert.ok(update.events.every(event => event.id > cursor && event.type !== "draw"));
+  assert.equal(read(host).version, update.version);
+
+  const idle = rooms.watch(code, host.token, update.version, cursor, signal);
+  assert.equal(await rooms.watch(code, host.token, update.version, cursor, signal), null);
+  tick(4500);
+  assert.equal(await idle, null);
+});
+
+test("leaving or canceling a long poll releases the room's listener", async () => {
+  const { rooms, host, code } = setUp();
+  const controller = new AbortController();
+  const watch = rooms.watch(code, host.token, host.state.version, 0, controller.signal);
+  controller.abort();
+  assert.equal(await watch, null);
+  assert.equal(rooms.items.get(code).listeners.size, 0);
+  const waiting = rooms.watch(code, host.token, host.state.version, 0, new AbortController().signal);
+  const dropped = assert.rejects(waiting, { code: "ROOM_MISSING" });
+  rooms.leave(code, host.token);
+  await dropped;
+});
+

@@ -12,7 +12,8 @@ let turnTimer = null;
 let endingTimer = null;
 let deadline = 0;
 let drawnSlot = null;
-let handLayout = null;
+let handOwner = null;
+const handSlots = [];
 let activeDrag = null;
 let bgm = null;
 let snowTimer;
@@ -26,6 +27,9 @@ const cardById = new Map(GameRules.cards.map(card => [card.id, card]));
 const cardArtUrl = card => (window.desktopOnline ? "card-art://local/" : "assets/cards/") + card.id + ".png";
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const slotLayouts = new WeakMap();
+const playerReadings = new WeakMap();
+const statusLayouts = new WeakMap();
+let logNeedsScroll = false;
 const cardTones = { "체온 상승": "heat", "체온 저하": "ice", "복불복": "chance", "효과": "status", "자폭": "fracture", "스페셜": "rare" };
 
 try {
@@ -47,6 +51,19 @@ function translateText(source) {
   return pattern ? source.replace(pattern, word => translations[language][word]) : source;
 }
 
+function setText(element, value) {
+  const source = String(value);
+  const node = element.firstChild;
+  if (node?.nodeType === Node.TEXT_NODE && !node.nextSibling && textSources.get(node) === source) return;
+  const label = document.createTextNode(translateText(source));
+  textSources.set(label, source);
+  element.replaceChildren(label);
+}
+
+function setFlag(element, property, value) {
+  if (element[property] !== value) element[property] = value;
+}
+
 function applyLanguageToPage(root = document.body) {
   if (root === document.body) {
     document.documentElement.lang = language;
@@ -62,18 +79,20 @@ function applyLanguageToPage(root = document.body) {
     if (node.nodeValue !== translated) node.nodeValue = translated;
   }
   root.querySelectorAll("[data-aria-label]").forEach(element => {
-    element.setAttribute("aria-label", translateText(element.dataset.ariaLabel));
+    const label = translateText(element.dataset.ariaLabel);
+    if (element.getAttribute("aria-label") !== label) element.setAttribute("aria-label", label);
   });
 }
 
 function log(message, kind = "notice") {
   const line = document.createElement("div");
   line.className = kind;
-  line.textContent = message;
+  setText(line, message);
   const box = get("log");
   box.append(line);
   logEntries.push(line);
   if (logEntries.length > 100) logEntries.shift().remove();
+  logNeedsScroll = true;
 }
 
 function playSound(file, volume) {
@@ -231,7 +250,7 @@ function scheduleTurn() {
 
 function resetMatch() {
   clearTurnTimer();
-  clearInterval(onlineClock);
+  clearTimeout(onlineClock);
   onlineClock = null;
   onlineDeadline = null;
   onlineNotice = "";
@@ -248,7 +267,7 @@ function resetMatch() {
   document.querySelectorAll(".rh-shake").forEach(panel => panel.classList.remove("rh-shake"));
   hideEndingScene();
   drawnSlot = null;
-  handLayout = null;
+  handOwner = null;
   match = null;
 }
 
@@ -259,6 +278,7 @@ function revealBoard() {
   document.querySelector(".wrap").classList.add("fullscreen-game");
   get("log").replaceChildren();
   logEntries.length = 0;
+  logNeedsScroll = false;
   startBgm();
 }
 
@@ -287,10 +307,15 @@ function ownsTurn() {
 }
 
 function updateOnlineClock() {
+  clearTimeout(onlineClock);
+  onlineClock = null;
   if (!onlineSide) return;
   const timer = get("timer");
-  const value = onlineDeadline === null ? "–" : String(Math.max(0, Math.ceil((onlineDeadline - performance.now()) / 1000)));
+  const remaining = onlineDeadline === null ? 0 : Math.max(0, onlineDeadline - performance.now());
+  const seconds = Math.ceil(remaining / 1000);
+  const value = onlineDeadline === null ? "–" : String(seconds);
   if (timer.textContent !== value) timer.textContent = value;
+  if (seconds > 0) onlineClock = setTimeout(updateOnlineClock, Math.ceil(remaining - (seconds - 1) * 1000));
 }
 
 function setOnlineNotice(message) {
@@ -300,10 +325,10 @@ function setOnlineNotice(message) {
 
 function renderOnlineTurn() {
   const status = get("onlineTurnStatus");
-  status.hidden = !onlineSide;
+  setFlag(status, "hidden", !onlineSide);
   if (!onlineSide) return;
-  status.className = onlineNotice ? "connection-issue" : ownsTurn() ? "local-turn" : "";
-  status.textContent = translateText(onlineNotice || (match.gameOver ? "게임 종료" : ownsTurn() ? "내 차례" : "상대 차례"));
+  setFlag(status, "className", onlineNotice ? "connection-issue" : ownsTurn() ? "local-turn" : "");
+  setText(status, onlineNotice || (match.gameOver ? "게임 종료" : ownsTurn() ? "내 차례" : "상대 차례"));
 }
 
 function receiveOnlineState(state, events, requestMs) {
@@ -312,7 +337,6 @@ function receiveOnlineState(state, events, requestMs) {
     onlineSide = state.side;
     match = { preview: player => player.nextCard };
     revealBoard();
-    onlineClock = setInterval(updateOnlineClock, 150);
   }
   clearDragVisuals();
   const card = id => cardById.get(id) ?? null;
@@ -330,10 +354,6 @@ function receiveOnlineState(state, events, requestMs) {
     blizzardCount: state.blizzardCount, gameOver: state.phase === "finished",
   });
   onlineDeadline = state.remainingMs === null ? null : performance.now() + Math.max(0, state.remainingMs - requestMs / 2);
-  if (match.gameOver) {
-    clearInterval(onlineClock);
-    onlineClock = null;
-  }
   for (const event of events) handleEvent({ ...event, card: card(event.card) });
   render();
 }
@@ -415,35 +435,42 @@ async function cancelSelection(event) {
 function renderPlayer(player) {
   const prefix = playerPrefix(player);
   const temp = get(prefix + "Temp");
-  temp.textContent = player.temp.toFixed(1) + "°C";
-  temp.className = "temp" + (player.temp <= 30 ? " danger" : player.temp <= 34 ? " cold" : "");
-  const percent = (player.temp - SETTINGS.lossTemp) / (SETTINGS.overheatTemp - SETTINGS.lossTemp) * 100;
-  const fill = Math.max(0, Math.min(100, percent));
-  get(prefix + "Bar").style.width = fill + "%";
   const panel = temp.closest(".player");
-  panel.style.setProperty("--reading", fill * 2.7 + "deg");
-  panel.dataset.thermal = player.temp >= SETTINGS.reducedHealingTemp ? "hot" : player.temp <= 34 ? "cold" : "steady";
+  if (playerReadings.get(panel) !== player.temp) {
+    playerReadings.set(panel, player.temp);
+    setText(temp, player.temp.toFixed(1) + "°C");
+    temp.className = "temp" + (player.temp <= 30 ? " danger" : player.temp <= 34 ? " cold" : "");
+    const percent = (player.temp - SETTINGS.lossTemp) / (SETTINGS.overheatTemp - SETTINGS.lossTemp) * 100;
+    const fill = Math.max(0, Math.min(100, percent));
+    get(prefix + "Bar").style.width = fill + "%";
+    panel.style.setProperty("--reading", fill * 2.7 + "deg");
+    panel.dataset.thermal = player.temp >= SETTINGS.reducedHealingTemp ? "hot" : player.temp <= 34 ? "cold" : "steady";
+  }
   panel.classList.toggle("taking-turn", !match.gameOver && match.currentPlayer?.name === player.name);
-  get(prefix + "Deck").textContent = player.deckCount ?? player.deck.length;
-  get(prefix + "Discard").textContent = player.discardCount ?? player.discard.length;
-  get(prefix + "Badge").textContent = onlineSide ? (player.name === onlineSide ? "내 자리" : "상대 자리") : player.isAI ? "AI" : "플레이어";
+  setText(get(prefix + "Deck"), player.deckCount ?? player.deck.length);
+  setText(get(prefix + "Discard"), player.discardCount ?? player.discard.length);
+  setText(get(prefix + "Badge"), onlineSide ? (player.name === onlineSide ? "내 자리" : "상대 자리") : player.isAI ? "AI" : "플레이어");
 
   const statuses = get(prefix + "Status");
   const statusLabels = player.statuses.length ? player.statuses.map(status => status.name + " " + status.remaining) : ["상태 없음"];
-  statuses.replaceChildren(...statusLabels.map(label => {
-    const item = document.createElement("span");
-    item.className = "status";
-    item.textContent = label;
-    return item;
-  }));
+  const statusLayout = statusLabels.join("|");
+  if (statusLayouts.get(statuses) !== statusLayout) {
+    statusLayouts.set(statuses, statusLayout);
+    statuses.replaceChildren(...statusLabels.map(label => {
+      const item = document.createElement("span");
+      item.className = "status";
+      setText(item, label);
+      return item;
+    }));
+  }
 
   const preview = get(prefix + "Next");
-  if (player.isAI) preview.textContent = "AI는 비공개";
-  else if (onlineSide && player.name !== onlineSide) preview.textContent = "상대 카드 비공개";
-  else if (hasStatus(player, "실명")) preview.textContent = "실명 상태: 다음 카드 확인 불가";
+  if (player.isAI) setText(preview, "AI는 비공개");
+  else if (onlineSide && player.name !== onlineSide) setText(preview, "상대 카드 비공개");
+  else if (hasStatus(player, "실명")) setText(preview, "실명 상태: 다음 카드 확인 불가");
   else {
     const card = match.preview(player);
-    if (!card) preview.textContent = "없음";
+    if (!card) setText(preview, "없음");
     else if (preview.querySelector("img")?.dataset.card !== card.id) {
       const thumbnail = document.createElement("img");
       thumbnail.src = cardArtUrl(card);
@@ -452,9 +479,9 @@ function renderPlayer(player) {
       thumbnail.draggable = false;
       const details = document.createElement("span");
       const name = document.createElement("strong");
-      name.textContent = card.name;
+      setText(name, card.name);
       const description = document.createElement("span");
-      description.textContent = card.desc;
+      setText(description, card.desc);
       details.append(name, description);
       preview.replaceChildren(thumbnail, details);
     }
@@ -464,35 +491,52 @@ function renderPlayer(player) {
 function renderHand(player) {
   const hand = get("hand");
   const active = ownsTurn();
-  const reasons = player.isAI ? [] : player.hand.map(card => active ? legalCard(player, card) : "상대 차례");
-  const layout = player.isAI ? JSON.stringify([player.name, match.gameOver]) :
-    JSON.stringify([player.name, Boolean(active), player.pending?.index, player.hand.map(card => card?.id), reasons]);
-  if (handLayout === layout && (player.isAI || drawnSlot === null)) return;
-  handLayout = layout;
-  hand.replaceChildren();
+  const owner = player.isAI ? "AI" : player.name;
+  if (handOwner !== owner) {
+    handOwner = owner;
+    handSlots.length = 0;
+    hand.replaceChildren();
+  }
 
   if (player.isAI) {
-    const waiting = document.createElement("div");
-    waiting.className = "mini-card ai-hand-message";
-    waiting.textContent = match.gameOver ? "게임 종료" : "AI가 카드를 고르고 있습니다.";
-    hand.append(waiting);
+    if (!hand.firstElementChild) {
+      const waiting = document.createElement("div");
+      waiting.className = "mini-card ai-hand-message";
+      hand.append(waiting);
+    }
+    setText(hand.firstElementChild, match.gameOver ? "게임 종료" : "AI가 카드를 고르고 있습니다.");
     return;
   }
 
+  for (let index = player.hand.length; index < handSlots.length; index++) handSlots[index]?.shell.remove();
+  handSlots.length = player.hand.length;
   for (const [index, card] of player.hand.entries()) {
-    if (!card) continue;
+    const previous = handSlots[index];
+    if (!card) {
+      previous?.shell.remove();
+      handSlots[index] = null;
+      continue;
+    }
     const pending = player.pending?.index === index;
-    const reason = reasons[index];
+    const reason = active ? legalCard(player, card) : "상대 차례";
     const enabled = active && !player.pending && !reason;
+    if (previous?.card === card && previous.pending === pending && drawnSlot !== index) {
+      if (previous.enabled !== enabled) {
+        setCardEnabled(previous.shell, enabled);
+        previous.enabled = enabled;
+      }
+      if (previous.reason !== reason) {
+        if (!pending) setText(previous.shell.querySelector(".asset-hover-target"), reason || "클릭하거나 드래그해서 배치");
+        previous.reason = reason;
+      }
+      continue;
+    }
     const shell = document.createElement("div");
     shell.className = "card-shell asset-skin";
     shell.dataset.handIndex = index;
     if (drawnSlot === index) shell.classList.add("flip-enter");
-    if (!enabled) shell.classList.add("disabled");
     shell.setAttribute("role", "button");
-    shell.setAttribute("aria-disabled", String(!enabled));
-    shell.tabIndex = enabled ? 0 : -1;
-    shell.draggable = enabled;
+    setCardEnabled(shell, enabled);
 
     if (pending) {
       shell.classList.add("waiting-card");
@@ -506,15 +550,15 @@ function renderHand(player) {
         '<div class="card-face card-back">' + createCardBackHTML() + "</div></div>" + createCardHintHTML(card, reason);
     }
 
-    if (enabled) {
-      shell.onclick = () => stageHumanCard(index);
+    if (!pending) {
+      shell.onclick = () => { if (shell.draggable) stageHumanCard(index); };
       shell.onkeydown = event => {
-        if (event.key !== "Enter" && event.key !== " ") return;
+        if (!shell.draggable || (event.key !== "Enter" && event.key !== " ")) return;
         event.preventDefault();
         stageHumanCard(index, true);
       };
       shell.ondragstart = event => {
-        if (!event.dataTransfer) return;
+        if (!shell.draggable || !event.dataTransfer) return;
         event.dataTransfer.setData(dragType, String(index));
         event.dataTransfer.effectAllowed = "move";
         activeDrag = { index, session: match, ghost: createDragGhost(shell, event) };
@@ -532,9 +576,20 @@ function renderHand(player) {
         clearDragVisuals();
       };
     }
-    hand.append(shell);
+    applyLanguageToPage(shell);
+    shell.setAttribute("aria-label", translateText(shell.dataset.ariaLabel));
+    if (previous) previous.shell.replaceWith(shell);
+    else hand.insertBefore(shell, handSlots.slice(index + 1).find(Boolean)?.shell ?? null);
+    handSlots[index] = { card, pending, enabled, reason, shell };
   }
   drawnSlot = null;
+}
+
+function setCardEnabled(shell, enabled) {
+  shell.classList.toggle("disabled", !enabled);
+  shell.setAttribute("aria-disabled", String(!enabled));
+  shell.tabIndex = enabled ? 0 : -1;
+  shell.draggable = enabled;
 }
 
 function renderSlot(player) {
@@ -552,7 +607,7 @@ function renderSlot(player) {
     tile.dataset.tone = cardTones[card.type];
     if (card.type === "스페셜") tile.dataset.special = card.id;
     const label = document.createElement("span");
-    label.textContent = card.name + (pending ? " · 대기" : "");
+    setText(label, card.name + (pending ? " · 대기" : ""));
     if (pending) {
       const art = document.createElement("img");
       art.src = cardArtUrl(card);
@@ -560,7 +615,7 @@ function renderSlot(player) {
       tile.append(art);
       const detail = document.createElement("small");
       detail.className = "slot-card-detail";
-      detail.textContent = card.desc;
+      setText(detail, card.desc);
       label.append(detail);
     }
     tile.append(label);
@@ -573,10 +628,11 @@ function render() {
   if (!match) return;
   const step = match.turn % SETTINGS.blizzardInterval;
   const gauge = get("blizzardGauge");
-  gauge.style.setProperty("--blizzard-progress", (step / SETTINGS.blizzardInterval * 100) + "%");
-  gauge.querySelector(".blizzard-label").textContent = "Blizzard " + step + "/" + SETTINGS.blizzardInterval;
-  gauge.querySelector(".blizzard-sub").textContent = match.blizzardCount + "회 발동";
-  get("turnInfo").textContent = "인게임 턴 " + match.turn + " · " + match.starter + " 선공";
+  const progress = (step / SETTINGS.blizzardInterval * 100) + "%";
+  if (gauge.style.getPropertyValue("--blizzard-progress") !== progress) gauge.style.setProperty("--blizzard-progress", progress);
+  setText(gauge.querySelector(".blizzard-label"), "Blizzard " + step + "/" + SETTINGS.blizzardInterval);
+  setText(gauge.querySelector(".blizzard-sub"), match.blizzardCount + "회 발동");
+  setText(get("turnInfo"), "인게임 턴 " + match.turn + " · " + match.starter + " 선공");
 
   for (const player of match.players) {
     renderPlayer(player);
@@ -586,21 +642,24 @@ function render() {
   const player = onlineSide ? match.players.find(side => side.name === onlineSide) : match.currentPlayer;
   const active = ownsTurn();
   const pending = active && player.pending;
-  get("actionCount").textContent = player.actionsUsed + " / " + maxActions(player);
-  get("handTitle").textContent = match.gameOver ? "게임 종료" : player.name + " 손패";
-  get("endBtn").textContent = pending ? "카드 배치 확정" : "턴 종료";
-  get("endBtn").disabled = !active;
+  setText(get("actionCount"), player.actionsUsed + " / " + maxActions(player));
+  setText(get("handTitle"), match.gameOver ? "게임 종료" : player.name + " 손패");
+  setText(get("endBtn"), pending ? "카드 배치 확정" : "턴 종료");
+  setFlag(get("endBtn"), "disabled", !active);
   get("endBtn").classList.toggle("confirm-ready", Boolean(pending));
-  get("cancelBtn").disabled = !pending;
-  get("restartBtn").hidden = Boolean(onlineSide);
-  get("endingRestartBtn").hidden = Boolean(onlineSide);
-  get("mainMenuBtn").textContent = onlineSide && !match.gameOver ? "기권하고 나가기" : "메인화면으로";
-  if (!active) get("timer").textContent = "–";
+  setFlag(get("cancelBtn"), "disabled", !pending);
+  setFlag(get("restartBtn"), "hidden", Boolean(onlineSide));
+  setFlag(get("endingRestartBtn"), "hidden", Boolean(onlineSide));
+  setText(get("mainMenuBtn"), onlineSide && !match.gameOver ? "기권하고 나가기" : "메인화면으로");
+  if (!active && !onlineSide && get("timer").textContent !== "–") get("timer").textContent = "–";
   renderHand(player);
-  applyLanguageToPage(document.querySelector(".wrap"));
   renderOnlineTurn();
   updateOnlineClock();
-  get("log").scrollTop = get("log").scrollHeight;
+  if (logNeedsScroll) {
+    const combatLog = get("log");
+    combatLog.scrollTop = combatLog.scrollHeight;
+    logNeedsScroll = false;
+  }
 }
 
 for (const prefix of ["p1", "p2"]) {
@@ -657,7 +716,7 @@ function showBurst(player, text, kind) {
 
   const burst = document.createElement("div");
   burst.className = `temp-burst ${kind}`;
-  burst.textContent = text;
+  setText(burst, text);
   panel.appendChild(burst);
   setTimeout(() => burst.remove(), 1400);
 }
@@ -682,7 +741,7 @@ function showCardCast(player, card) {
     seal.append(art);
   }
   const title = document.createElement("strong");
-  title.textContent = card.name;
+  setText(title, card.name);
   seal.append(title);
   if (!reducedMotion.matches) {
     const sparks = document.createElement("span");
@@ -728,7 +787,7 @@ function showTempFloat(player, delta) {
   const floatEl = document.createElement("div");
   if (delta === 0) {
     floatEl.className = "temp-float no-change";
-    floatEl.textContent = "변화없음";
+    setText(floatEl, "변화없음");
   } else {
     floatEl.className = `temp-float ${delta > 0 ? "up" : "down"}`;
     const sign = delta > 0 ? "+" : "";
@@ -748,7 +807,7 @@ function showStatusEffect(player, statusName, kind="") {
   const pop = document.createElement("div");
   const effectKind = kind || (isBuff(statusName) ? "buff" : isDebuff(statusName) ? "debuff" : "special");
   pop.className = `effect-pop ${effectKind}`;
-  pop.textContent = `${effectKind === "buff" ? "BUFF" : effectKind === "debuff" ? "DEBUFF" : "EFFECT"} · ${statusName}`;
+  setText(pop, `${effectKind === "buff" ? "BUFF" : effectKind === "debuff" ? "DEBUFF" : "EFFECT"} · ${statusName}`);
   panel.appendChild(pop);
   setTimeout(() => pop.remove(), 1300);
 }
@@ -826,21 +885,20 @@ function showResultAnnouncer(kicker, mainText) {
       <div class="result-main">${mainText}</div>
     </div>`;
   document.body.appendChild(overlay);
-  applyLanguageToPage();
+  applyLanguageToPage(overlay);
   setTimeout(() => overlay.remove(), 2400);
 }
 
 function showEndingScene(winner, both, forfeited) {
   const name = winner === "P1" ? "P2" : "P1";
-  get("endingTitle").textContent = winner === "P1" ? "P1이 승리하였습니다!"
-    : winner === "P2" ? "P2가 승리하였습니다!" : "무승부입니다!";
-  get("endingSub").textContent = forfeited ? forfeited + " 기권"
+  setText(get("endingTitle"), winner === "P1" ? "P1이 승리하였습니다!"
+    : winner === "P2" ? "P2가 승리하였습니다!" : "무승부입니다!");
+  setText(get("endingSub"), forfeited ? forfeited + " 기권"
     : winner === "DRAW" ? "양쪽 모두 같은 체온으로 한계선 아래에 도달했습니다."
-    : both ? name + "의 체온이 더 낮았습니다." : name + "가 저체온 상태에 도달했습니다.";
+    : both ? name + "의 체온이 더 낮았습니다." : name + "가 저체온 상태에 도달했습니다.");
   document.body.classList.add("game-not-started");
   document.querySelector(".wrap").classList.remove("fullscreen-game");
   get("endingScreen").classList.add("show");
-  applyLanguageToPage();
   get(onlineSide ? "endingMainBtn" : "endingRestartBtn").focus();
 }
 function hideEndingScene() {
