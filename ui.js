@@ -14,6 +14,7 @@ let deadline = 0;
 let drawnSlot = null;
 let handOwner = null;
 const handSlots = [];
+let hoveredCard = null;
 let activeDrag = null;
 let bgm = null;
 let snowTimer;
@@ -275,6 +276,7 @@ function resetMatch() {
   hideEndingScene();
   drawnSlot = null;
   handOwner = null;
+  hoveredCard = null;
   match = null;
 }
 
@@ -454,9 +456,11 @@ function renderPlayer(player) {
     panel.style.setProperty("--reading", fill * 2.7 + "deg");
     panel.dataset.thermal = player.temp >= SETTINGS.reducedHealingTemp ? "hot" : player.temp <= 34 ? "cold" : "steady";
   }
-  panel.classList.toggle("taking-turn", !match.gameOver && match.currentPlayer?.name === player.name);
-  setText(get(prefix + "Deck"), player.deckCount ?? player.deck.length);
-  setText(get(prefix + "Discard"), player.discardCount ?? player.discard.length);
+  const takingTurn = !match.gameOver && match.currentPlayer?.name === player.name;
+  panel.classList.toggle("taking-turn", takingTurn);
+  setText(get(prefix + "Actions"), takingTurn
+    ? remainingActions(player)
+    : match.gameOver ? "게임 종료" : "차례 대기");
   setText(get(prefix + "Badge"), onlineSide ? (player.name === onlineSide ? "내 자리" : "상대 자리") : player.isAI ? "AI" : "플레이어");
 
   const statuses = get(prefix + "Status");
@@ -496,6 +500,11 @@ function renderPlayer(player) {
   }
 }
 
+function remainingActions(player) {
+  const limit = maxActions(player);
+  return Math.max(0, limit - player.actionsUsed) + " / " + limit;
+}
+
 function renderHand(player) {
   const hand = get("hand");
   const active = ownsTurn();
@@ -526,17 +535,15 @@ function renderHand(player) {
       continue;
     }
     const pending = player.pending?.index === index;
-    const reason = active ? legalCard(player, card) : "상대 차례";
-    const enabled = active && !player.pending && !reason;
+    const reason = match.gameOver ? "게임 종료" : !active ? "상대 차례"
+      : pending ? "카드 대기중" : player.pending ? "배치한 카드를 확정하거나 취소하세요." : legalCard(player, card);
+    const enabled = !reason;
     if (previous?.card === card && previous.pending === pending && drawnSlot !== index) {
       if (previous.enabled !== enabled) {
         setCardEnabled(previous.shell, enabled);
         previous.enabled = enabled;
       }
-      if (previous.reason !== reason) {
-        if (!pending) setText(previous.shell.querySelector(".asset-hover-target"), reason || "클릭하거나 드래그해서 배치");
-        previous.reason = reason;
-      }
+      previous.reason = reason;
       continue;
     }
     const shell = document.createElement("div");
@@ -555,7 +562,7 @@ function renderHand(player) {
     } else {
       shell.dataset.ariaLabel = card.name + " · " + card.desc;
       shell.innerHTML = '<div class="card-flip">' + createAssetCardFaceHTML(card) +
-        '<div class="card-face card-back">' + createCardBackHTML() + "</div></div>" + createCardHintHTML(card, reason);
+        '<div class="card-face card-back">' + createCardBackHTML() + "</div></div>";
     }
 
     if (!pending) {
@@ -596,9 +603,45 @@ function renderHand(player) {
 function setCardEnabled(shell, enabled) {
   shell.classList.toggle("disabled", !enabled);
   shell.setAttribute("aria-disabled", String(!enabled));
-  shell.tabIndex = enabled ? 0 : -1;
+  shell.tabIndex = 0;
   shell.draggable = enabled;
 }
+
+function renderCardDetails(focus = document.activeElement) {
+  const shell = hoveredCard?.isConnected ? hoveredCard : focus?.closest?.("#hand .card-shell:focus-visible");
+  const slot = handSlots.find(item => item && item.shell === shell) ?? handSlots.find(item => item?.pending);
+  const details = get("cardDetails");
+  const card = slot?.card;
+  for (const item of handSlots) {
+    item?.shell.classList.toggle("inspected", item === slot && !item.pending);
+  }
+  setFlag(details.dataset, "tone", card ? cardTones[card.type] : "neutral");
+  setText(get("detailName"), card?.name ?? "카드 설명");
+  setFlag(get("detailType"), "hidden", !card);
+  setFlag(get("detailReason"), "hidden", !slot?.reason);
+  if (card) setText(get("detailType"), card.type);
+  if (slot?.reason) setText(get("detailReason"), slot.reason);
+  setText(get("detailEffect"), card?.desc ?? "카드에 커서를 올리거나 Tab으로 설명을 확인하세요.");
+}
+
+const hand = get("hand");
+hand.onpointerover = event => {
+  if (event.pointerType === "touch") return;
+  const shell = event.target.closest(".card-shell");
+  if (shell === hoveredCard) return;
+  hoveredCard = shell;
+  renderCardDetails();
+};
+hand.onpointerout = event => {
+  if (!hoveredCard || hoveredCard.contains(event.relatedTarget)) return;
+  hoveredCard = null;
+  renderCardDetails();
+};
+hand.addEventListener("focusin", event => {
+  if (event.target.matches(":focus-visible")) hoveredCard = null;
+  renderCardDetails();
+});
+hand.addEventListener("focusout", event => renderCardDetails(event.relatedTarget));
 
 function renderSlot(player) {
   const slot = get(playerPrefix(player) + "Slot");
@@ -650,7 +693,8 @@ function render() {
   const player = onlineSide ? match.players.find(side => side.name === onlineSide) : match.currentPlayer;
   const active = ownsTurn();
   const pending = active && player.pending;
-  setText(get("actionCount"), player.actionsUsed + " / " + maxActions(player));
+  setFlag(get("handActions"), "hidden", !active);
+  if (active) setText(get("handActions"), "남은 행동 " + remainingActions(player));
   setText(get("handTitle"), match.gameOver ? "게임 종료" : player.name + " 손패");
   setText(get("endBtn"), pending ? "카드 배치 확정" : "턴 종료");
   setFlag(get("endBtn"), "disabled", !active);
@@ -661,6 +705,7 @@ function render() {
   setText(get("mainMenuBtn"), onlineSide && !match.gameOver ? "기권하고 나가기" : "메인화면으로");
   if (!active && !onlineSide && get("timer").textContent !== "–") get("timer").textContent = "–";
   renderHand(player);
+  renderCardDetails();
   renderOnlineTurn();
   updateOnlineClock();
   if (logNeedsScroll) {
@@ -935,15 +980,6 @@ function createAssetCardFaceHTML(card) {
     </div>`;
 }
 
-function createCardHintHTML(card, reason) {
-  return `<div class="asset-hover-info">
-      <div class="asset-hover-name">${card.name}</div>
-      <div class="asset-hover-type">${card.type}</div>
-      <div class="asset-hover-desc">${card.desc}</div>
-      <div class="asset-hover-target">${reason || "클릭하거나 드래그해서 배치"}</div>
-    </div>`;
-}
-
 
 function createCardBackHTML() {
   return `
@@ -1012,8 +1048,6 @@ function createDragGhost(shell, event) {
   ghost.style.setProperty("overflow", "visible", "important");
   ghost.style.setProperty("border-radius", "14px", "important");
 
-  const hoverInfo = ghost.querySelector(".asset-hover-info");
-  if (hoverInfo) hoverInfo.remove();
 
   ghost.querySelectorAll(".card-flip, .card-face, .card-front, .asset-card-image").forEach(el => {
     el.style.setProperty("width", "100%", "important");
