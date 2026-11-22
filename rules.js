@@ -11,6 +11,8 @@ const GameRules = (() => {
     actions: 2,
     secondsPerAction: 15,
     blizzardInterval: 3,
+    stormDelay: 1500,
+    stormDuration: 3000,
     maxBlizzardDamage: 5,
     insulation: 0.6,
     tornClothes: 1.25,
@@ -142,7 +144,9 @@ const GameRules = (() => {
   }
 
   class Match {
-    constructor({ random = Math.random, onEvent = () => {}, starter, aiPlayer = "P2" } = {}) {
+    constructor({ random = Math.random, onEvent = () => {}, starter, aiPlayer = "P2", timedStorms = false } = {}) {
+      this.timedStorms = timedStorms;
+      this.storm = null;
       this.random = random;
       this.onEvent = onEvent;
       this.starter = starter ?? (random() < 0.5 ? "P1" : "P2");
@@ -205,7 +209,13 @@ const GameRules = (() => {
         this.turn++;
         for (const side of this.players) side.usedThisTurn = [];
         this.emit("round", { turn: this.turn });
-        if (this.turn % SETTINGS.blizzardInterval === 0) this.blizzard();
+        if (this.turn % SETTINGS.blizzardInterval === 0) {
+          if (this.timedStorms) {
+            this.storm = "warning";
+            return true;
+          }
+          this.blizzard();
+        }
       }
       if (!this.gameOver) this.beginTurn();
       return true;
@@ -363,11 +373,23 @@ const GameRules = (() => {
       }
     }
 
+    advanceStorm() {
+      if (this.gameOver || !this.storm) return;
+      if (this.storm === "warning") {
+        this.storm = "active";
+        this.blizzard();
+      } else {
+        this.storm = null;
+        this.checkResult();
+        if (!this.gameOver) this.beginTurn();
+      }
+    }
+
     blizzard() {
       const damage = blizzardDamage(++this.blizzardCount);
       this.emit("blizzard", { count: this.blizzardCount, damage });
       for (const player of this.players) this.changeTemp(player, -damage, "Blizzard");
-      this.checkResult();
+      if (!this.storm) this.checkResult();
     }
 
     checkResult() {

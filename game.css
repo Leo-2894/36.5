@@ -4429,3 +4429,48 @@ body.is-dragging-card .field .slot.drop-ready {
 .custom-card-asset, .preview .mini-card img {
   image-rendering: pixelated;
 }
+
+/* Player instruments and battlefield feedback */
+.game .player::before { display: none !important; }
+.game .player { overflow-y: auto; scrollbar-width: thin; }
+.game .player .temp { margin-top: 8px !important; }
+.pilot {
+  position: relative; width: clamp(52px,6.6vw,88px); aspect-ratio: 1;
+  margin: 14px auto 0; border-radius: 22%; border: 2px solid #52697a;
+  background: linear-gradient(145deg,#283e50,#101c2c); box-shadow: inset 0 0 0 4px #122331;
+}
+.pilot i { position: absolute; inset: 17%; }
+.heat-pilot i {
+  background: linear-gradient(145deg,#ffdf8b 30%,#f4954c 30% 65%,#bf5440 65%);
+  clip-path: polygon(46% 0,59% 0,59% 22%,72% 22%,72% 37%,83% 37%,83% 26%,90% 26%,90% 50%,100% 50%,100% 76%,87% 76%,87% 91%,73% 91%,73% 100%,26% 100%,26% 91%,13% 91%,13% 78%,3% 78%,3% 54%,16% 54%,16% 38%,30% 38%,30% 51%,39% 51%,39% 23%,46% 23%);
+}
+.cold-pilot i {
+  background: linear-gradient(135deg,#d9fbff 35%,#83d8f1 35% 65%,#518bbd 65%);
+  clip-path: polygon(42% 0,58% 0,58% 18%,72% 7%,80% 18%,60% 36%,60% 43%,77% 43%,91% 28%,100% 38%,90% 50%,100% 62%,91% 72%,77% 57%,60% 57%,60% 64%,80% 82%,72% 93%,58% 82%,58% 100%,42% 100%,42% 82%,28% 93%,20% 82%,40% 64%,40% 57%,23% 57%,9% 72%,0 62%,10% 50%,0 38%,9% 28%,23% 43%,40% 43%,40% 36%,20% 18%,28% 7%,42% 18%);
+}
+.thermal-scale { position:relative; height:18px; margin-top:3px; font: 11px/1.4 monospace; color:#d1e6ef; }
+.thermal-scale span { position:absolute; }
+.thermal-scale span:nth-child(2) { left:76.67%; transform:translateX(-65%); }
+.thermal-scale span:last-child { right:0; }
+.player .bar { position:relative; }
+.player .bar::after { content:""; position:absolute; inset:0; background:repeating-linear-gradient(90deg,#0e253680 0 1px,transparent 1px 6.6667%); border-radius:inherit; }
+.player .status-row { align-content:start; max-height:145px; overflow:auto; scrollbar-width:thin; }
+.player .status:is(.benefit,.penalty) { width:100%; border-radius:7px; text-align:start; white-space:normal; padding:5px 8px; line-height:1.3; }
+.status.benefit strong { color:#9ce5c0; }
+.status.penalty strong { color:#ffaeac; }
+.status small { display:block; font-size:12px; color:#e2ebf1; }
+#battleWave { position:fixed; inset:0; z-index:12; opacity:0; pointer-events:none; box-shadow: inset 0 0 clamp(36px,7vw,110px) color-mix(in srgb,var(--spark) 43%,transparent); }
+.chained .pilot::after,.chained .pilot::before {
+  content:""; position:absolute; top:45%; left:-38%; width:176%; height:11px;
+  background: radial-gradient(ellipse at center,transparent 31%,#bbc3c7 35% 49%,#485360 52% 65%,transparent 69%) 0 0 / 17px 11px repeat-x;
+  transform:rotate(16deg); animation:bind-links .35s ease-out;
+}
+.chained .pilot::before { transform:rotate(-16deg); }
+@keyframes bind-links { from {scale:1.3;opacity:0;} }
+.frosted .pilot { border-color:#cdf5ff; box-shadow: inset 0 0 18px #a7e9ff,0 0 14px #82d6ff88; }
+.frosted .pilot i::after { content:"";position:absolute;inset:0;background:repeating-linear-gradient(55deg,transparent 0 8px,#e6faffaa 9px 11px); }
+#stormNotice { position:fixed; z-index:18; top:18%; left:50%; transform:translateX(-50%); display:grid; gap:5px; text-align:center; padding:12px 24px; width:max-content; max-width:90vw; background:#102b40f7; border:1px solid #a7e2ff; border-radius:10px; pointer-events:none; }
+#stormNotice strong { color:#d3f5ff; font-size:22px; }
+#stormNotice span { font-size:15px; }
+.snow.active { opacity:.8; box-shadow:inset 0 0 90px #abdcff80; }
+@media(prefers-reduced-motion:reduce) { .chained .pilot::before,.chained .pilot::after { animation:none; } }

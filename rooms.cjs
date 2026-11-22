@@ -80,7 +80,7 @@ class Rooms {
     const token = randomBytes(24).toString("base64url");
     room.tokens.push(token);
     room.expiresAt = this.now() + matchLifetime;
-    room.match = new Match({ aiPlayer: null, random: this.random, onEvent: event => this.record(room, event) });
+    room.match = new Match({ aiPlayer: null, timedStorms: true, random: this.random, onEvent: event => this.record(room, event) });
     room.match.start();
     this.commit(room, true);
     return { token, state: this.snapshot(room, "P2") };
@@ -133,7 +133,7 @@ class Rooms {
     const { room, side } = this.authorize(code, token);
     this.expireAction(room);
     const match = room.match;
-    if (!match || match.gameOver) throw new RoomError(409, "MATCH_UNAVAILABLE");
+    if (!match || match.gameOver || match.storm) throw new RoomError(409, "MATCH_UNAVAILABLE");
     if (command.version !== room.version) throw new RoomError(409, "STALE_ACTION");
     if (match.current !== side) throw new RoomError(409, "OPPONENT_TURN");
 
@@ -162,7 +162,8 @@ class Rooms {
 
   expireAction(room) {
     if (room.deadline === null || this.now() < room.deadline) return;
-    room.match.timeOut();
+    if (room.match.storm) room.match.advanceStorm();
+    else room.match.timeOut();
     this.commit(room, true);
   }
 
@@ -173,7 +174,8 @@ class Rooms {
       room.expiresAt = this.now() + resultLifetime;
     } else if (resetClock) {
       this.clearTimer(room);
-      const delay = SETTINGS.secondsPerAction * 1000;
+      const storm = room.match.storm;
+      const delay = storm === "warning" ? SETTINGS.stormDelay : storm === "active" ? SETTINGS.stormDuration : SETTINGS.secondsPerAction * 1000;
       room.deadline = this.now() + delay;
       this.armClock(room);
     }
@@ -209,6 +211,7 @@ class Rooms {
       ...state,
       phase: match.gameOver ? "finished" : "playing",
       turn: match.turn, blizzardCount: match.blizzardCount, current: match.current,
+      storm: match.gameOver ? null : match.storm,
       starter: match.starter, winner: match.winner,
       remainingMs: room.deadline === null ? null : Math.max(0, room.deadline - this.now()),
       players: match.players.map(player => {

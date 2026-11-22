@@ -33,6 +33,25 @@ function setUp(random = () => 0.9) {
   return { rooms, host, code, tick, read, action };
 }
 
+test("both clients observe the storm before the next action clock starts", () => {
+  const { rooms, code, host, tick, read, action } = setUp();
+  const guest = rooms.join(code);
+  for (let i = 0; i < 6; i++) action(i % 2 ? host : guest, "pass");
+  assert.equal(read(host).storm, "warning");
+  tick(1499);
+  assert.equal(read(guest).players[0].temp, 36.5);
+  tick(1);
+  assert.equal(read(host).storm, "active");
+  assert.equal(read(guest).players[0].temp, 34.5);
+  assert.throws(() => action(guest, "pass"), { code: "MATCH_UNAVAILABLE" });
+  tick(2999);
+  assert.equal(read(host).storm, "active");
+  tick(1);
+  assert.equal(read(guest).storm, null);
+  assert.equal(read(guest).remainingMs, 15000);
+  rooms.close();
+});
+
 test("one invitation seats two players and starts their shared match", () => {
   const { rooms, host, code, read } = setUp();
   assert.match(code, /^[2-9A-HJ-NP-Z]{6}$/);
