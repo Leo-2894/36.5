@@ -76,7 +76,7 @@ function serveFile(request, response, pathname) {
   });
 }
 
-function createGameServer({ rooms = new Rooms(), inviteOrigin = process.env.INVITE_ORIGIN, customCardArt } = {}) {
+function createGameServer({ rooms = new Rooms(), inviteOrigin = process.env.INVITE_ORIGIN, customCardArt, mode } = {}) {
   const publishedOrigin = typeof inviteOrigin === "function" ? inviteOrigin : () => inviteOrigin ? new URL(inviteOrigin).origin : null;
   const server = http.createServer({ requestTimeout: 10_000, headersTimeout: 8_000 }, async (request, response) => {
     response.setHeader("X-Content-Type-Options", "nosniff");
@@ -88,8 +88,8 @@ function createGameServer({ rooms = new Rooms(), inviteOrigin = process.env.INVI
         const local = ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(socketAddress) &&
           /^(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i.test(request.headers.host ?? "");
         const port = server.address().port;
-        const addresses = local ? localAddresses().map(address => "http://" + address + ":" + port) : [];
-        json(response, 200, { origin: publishedOrigin(), addresses });
+        const addresses = local && mode !== "internet" ? localAddresses().map(address => "http://" + address + ":" + port) : [];
+        json(response, 200, { origin: publishedOrigin(), addresses, mode });
         return;
       }
       if (target.pathname === "/api/rooms" && method === "POST") {

@@ -33,17 +33,28 @@
       <span><img src="assets/lobby/ice-pack.png" alt=""></span>
     </div>
   </header>
+  <div id="onlineModes" class="lobby-modes" hidden>
+    <button id="chooseLanMode" type="button">
+      <strong>같은 네트워크</strong>
+      <span>같은 Wi-Fi나 공유기에 연결된 친구</span>
+    </button>
+    <button id="chooseInternetMode" type="button">
+      <strong>다른 네트워크</strong>
+      <span>다른 장소나 데이터 연결을 사용하는 친구</span>
+    </button>
+  </div>
   <div id="onlineDesktop" hidden>
-    <div id="desktopHostChoices" hidden>
-      <button id="hostOnDesktopBtn" class="lobby-primary">인터넷 초대방 만들기</button>
-      <p class="lobby-host-help">Cloudflare를 통해 임시 링크를 만듭니다. 첫 실행에는 구성 요소를 다운로드합니다.</p>
-      <button id="hostLanBtn">같은 네트워크에서 방 만들기</button>
-    </div>
+    <button id="hostModeBtn" class="lobby-primary" hidden>방 만들기</button>
+    <p id="internetHelp" class="lobby-host-help" hidden>인터넷 방을 만들면 Cloudflare 임시 초대 링크가 발급됩니다.</p>
     <form id="serverForm" class="lobby-form">
       <label for="serverAddress">친구가 보낸 서버 주소 또는 초대 링크</label>
       <div class="lobby-row">
-        <input id="serverAddress" type="text" inputmode="url" autocomplete="url" required placeholder="http://192.168.0.10:3650">
-        <button type="submit">접속</button>
+        <input id="serverAddress" type="text" inputmode="url" autocomplete="url" required>
+      </div>
+      <label for="serverCode">초대 코드</label>
+      <div class="lobby-row">
+        <input id="serverCode" type="text" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="6자리 코드">
+        <button type="submit">코드 확인</button>
       </div>
     </form>
   </div>

@@ -71,7 +71,7 @@ ipcMain.handle("start-online-host", (event, mode) => {
   if (!["lan", "internet"].includes(mode)) throw new Error("Invalid host mode");
   if (!hosts.has(mode)) {
     const session = { open: true, origin: null };
-    session.server = createGameServer({ inviteOrigin: () => session.origin, customCardArt });
+    session.server = createGameServer({ inviteOrigin: () => session.origin, customCardArt, mode });
     session.ready = hostGame(session, mode).catch(error => {
       stopHost(session);
       hosts.delete(mode);
