@@ -102,6 +102,8 @@ function createGameServer({ rooms = new Rooms(), inviteOrigin = process.env.INVI
       if (route) {
         const [, code, operation] = route;
         const token = request.headers.authorization?.match(/^Bearer ([\w-]{32})$/)?.[1];
+        const cursor = Number(target.searchParams.get("event"));
+        const eventId = Number.isSafeInteger(cursor) && cursor > 0 ? cursor : 0;
         if (operation === "join" && method === "POST") {
           await readJson(request);
           json(response, 200, rooms.join(code));
@@ -109,14 +111,25 @@ function createGameServer({ rooms = new Rooms(), inviteOrigin = process.env.INVI
         }
         if (!operation && method === "GET") {
           const after = Number(target.searchParams.get("after"));
-          const state = rooms.read(code, token, after);
+          let state;
+          if (target.searchParams.get("wait") === "1") {
+            const controller = new AbortController();
+            const cancel = () => controller.abort();
+            response.once("close", cancel);
+            try {
+              state = await rooms.watch(code, token, after, eventId, controller.signal);
+            } finally {
+              response.off("close", cancel);
+            }
+            if (response.destroyed) return;
+          } else state = rooms.read(code, token, after, eventId);
           if (state) json(response, 200, state);
           else response.writeHead(204, { "Cache-Control": "no-store" }).end();
           return;
         }
         if (operation === "action" && method === "POST") {
           const command = await readJson(request);
-          json(response, 200, rooms.action(code, token, command));
+          json(response, 200, rooms.action(code, token, command, eventId));
           return;
         }
         if (operation === "leave" && method === "POST") {

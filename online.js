@@ -19,16 +19,17 @@ const Online = (() => {
   const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
   let inviteOrigin = hosted && !loopback ? location.origin : null;
 
-  function request(path, { token, body, keepalive = false } = {}) {
+  function request(path, { token, body, keepalive = false, signal } = {}) {
     const headers = {};
     if (token) headers.Authorization = "Bearer " + token;
     if (body !== undefined) headers["Content-Type"] = "application/json";
+    const timeout = AbortSignal.timeout(6500);
     return fetch(path, {
       method: body === undefined ? "GET" : "POST",
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
       cache: "no-store",
-      signal: AbortSignal.timeout(6500),
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
       keepalive,
     }).then(async response => {
       if (response.status === 204) return null;
@@ -45,8 +46,7 @@ const Online = (() => {
   }
 
   function message(text) {
-    get("onlineMessage").textContent = text;
-    applyLanguageToPage();
+    setText(get("onlineMessage"), text);
   }
 
   function enableLobbyButtons(enabled) {
@@ -107,6 +107,7 @@ const Online = (() => {
   function forget(room = session) {
     if (session !== room) return;
     clearTimeout(pollTimer);
+    room?.pollController?.abort();
     session = null;
     remember(null);
   }
@@ -136,6 +137,7 @@ const Online = (() => {
     if (dialog.open) dialog.close();
     room.playing = true;
     room.finished = data.phase === "finished";
+    if (room.finished) room.pollController?.abort();
     const events = data.events.filter(event => event.id > room.eventId);
     if (events.length) room.eventId = events.at(-1).id;
     receiveOnlineState(data, events, requestMs);
@@ -148,21 +150,26 @@ const Online = (() => {
   }
 
   async function poll(room) {
-    if (session !== room || room.polling) return;
-    room.polling = true;
+    if (session !== room || room.pollController) return;
+    const controller = new AbortController();
+    room.pollController = controller;
     const sent = performance.now();
-    let delay = 650;
+    let delay = 0;
     try {
-      const data = await request(roomPath(room) + "?after=" + room.version, { token: room.token });
-      if (session !== room) return;
+      const data = await request(roomPath(room) + "?after=" + room.version + "&event=" + room.eventId + "&wait=1", {
+        token: room.token, signal: controller.signal,
+      });
+      if (session !== room || controller.signal.aborted) return;
       if (room.offline) {
         if (room.playing) setOnlineNotice("");
         else message("");
         room.offline = false;
       }
-      applyState(room, data, performance.now() - sent);
+      // An immediate empty reply can come from an older server without long polling.
+      if (!data && performance.now() - sent < 350) delay = 650;
+      applyState(room, data, 0);
     } catch (error) {
-      if (session !== room) return;
+      if (session !== room || controller.signal.aborted) return;
       if (["ROOM_MISSING", "UNAUTHORIZED"].includes(error.code)) {
         forget(room);
         if (room.playing) returnToMainMenu();
@@ -175,7 +182,7 @@ const Online = (() => {
       if (room.playing) setOnlineNotice("연결을 다시 시도하는 중…");
       else message("연결을 다시 시도하는 중…");
     } finally {
-      room.polling = false;
+      room.pollController = null;
       schedulePoll(room, delay);
     }
   }
@@ -207,7 +214,7 @@ const Online = (() => {
     room.sending = true;
     const sent = performance.now();
     try {
-      const state = await request(roomPath(room, "/action"), {
+      const state = await request(roomPath(room, "/action") + "?event=" + room.eventId, {
         token: room.token, body: { type, ...detail, version: room.version },
       });
       if (session !== room) return false;
@@ -217,7 +224,8 @@ const Online = (() => {
     } catch (error) {
       if (session === room) {
         setOnlineNotice(error.code === "OPPONENT_TURN" ? "상대 차례" : errorMessage(error));
-        if (!room.polling) schedulePoll(room, 0);
+        room.pollController?.abort();
+        schedulePoll(room, 0);
       }
       return false;
     } finally {

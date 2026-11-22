@@ -37,6 +37,7 @@ class Rooms {
   drop(room) {
     this.clearTimer(room);
     this.items.delete(room.code);
+    this.notify(room);
   }
 
   sweep() {
@@ -60,7 +61,7 @@ class Rooms {
     const token = randomBytes(24).toString("base64url");
     const room = {
       code, tokens: [token], match: null, version: 1, log: [],
-      eventId: 0, timer: null, deadline: null, expiresAt: this.now() + waitLifetime,
+      eventId: 0, timer: null, deadline: null, expiresAt: this.now() + waitLifetime, listeners: new Map(),
     };
     this.items.set(code, room);
     return { token, state: this.snapshot(room, "P1") };
@@ -92,10 +93,34 @@ class Rooms {
     return { room, side: sideNames[index] };
   }
 
-  read(code, token, after) {
+  read(code, token, after, eventId = 0) {
     const { room, side } = this.authorize(code, token);
     this.expireAction(room);
-    return room.version === after ? null : this.snapshot(room, side);
+    return room.version === after ? null : this.snapshot(room, side, eventId);
+  }
+
+  async watch(code, token, after, eventId, signal) {
+    const state = this.read(code, token, after, eventId);
+    if (state || signal.aborted) return state;
+    const { room, side } = this.authorize(code, token);
+    if (room.match?.gameOver || room.listeners.has(side)) return null;
+    await new Promise(resolve => {
+      const complete = () => {
+        this.unschedule(timer);
+        room.listeners.delete(side);
+        signal.removeEventListener("abort", complete);
+        resolve();
+      };
+      const timer = this.schedule(complete, 4500);
+      timer?.unref?.();
+      room.listeners.set(side, complete);
+      signal.addEventListener("abort", complete, { once: true });
+    });
+    return signal.aborted ? null : this.read(code, token, after, eventId);
+  }
+
+  notify(room) {
+    for (const complete of room.listeners.values()) complete();
   }
 
   leave(code, token) {
@@ -104,7 +129,7 @@ class Rooms {
     else if (room.match.forfeit(side === "P1" ? room.match.p1 : room.match.p2)) this.commit(room);
   }
 
-  action(code, token, command) {
+  action(code, token, command, eventId = 0) {
     const { room, side } = this.authorize(code, token);
     this.expireAction(room);
     const match = room.match;
@@ -132,7 +157,7 @@ class Rooms {
     }
     if (!changed) throw new RoomError(409, "INVALID_ACTION");
     this.commit(room, command.type === "confirm" || command.type === "pass");
-    return this.snapshot(room, side);
+    return this.snapshot(room, side, eventId);
   }
 
   expireAction(room) {
@@ -152,6 +177,7 @@ class Rooms {
       room.deadline = this.now() + delay;
       this.armClock(room);
     }
+    this.notify(room);
   }
 
   armClock(room) {
@@ -174,7 +200,7 @@ class Rooms {
     if (room.log.length > 120) room.log.shift();
   }
 
-  snapshot(room, side) {
+  snapshot(room, side, eventId = 0) {
     const state = { code: room.code, side, version: room.version, phase: "waiting" };
     const match = room.match;
     if (!match) return state;
@@ -199,7 +225,8 @@ class Rooms {
           }),
         };
       }),
-      events: room.log.filter(event => !["draw", "swap"].includes(event.type) || event.player?.name === side),
+      events: eventId === room.eventId ? [] : room.log.filter(event => event.id > eventId &&
+        ((event.type !== "draw" && event.type !== "swap") || event.player?.name === side)),
     };
   }
 }
