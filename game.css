@@ -4486,7 +4486,7 @@ body.is-dragging-card .field .slot.drop-ready {
 }
 #snow.active { animation:whiteout 3s ease-in-out both; }
 @keyframes whiteout {
-  0% {opacity:0} 24% {opacity:.67} 46% {opacity:.9} 66% {opacity:.7} 85% {opacity:.32} 100% {opacity:0}
+  0% {opacity:0} 24% {opacity:.34} 50% {opacity:.9} 65% {opacity:.72} 85% {opacity:.32} 100% {opacity:0}
 }
 #snow i {
   display:none; position:absolute; left:var(--x); top:var(--y);

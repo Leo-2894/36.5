@@ -39,12 +39,20 @@ test("both clients observe the storm before the next action clock starts", () =>
   for (let i = 0; i < 5; i++) action(i % 2 ? host : guest, "pass");
   assert.equal(read(host).turn, 2);
   assert.equal(read(host).storm, null);
-  assert.equal(read(guest).players[0].temp, 36.5);
+  const startingTemps = [38, 36.5];
+  assert.deepEqual(read(guest).players.map(player => player.temp), startingTemps);
   action(host, "pass");
-  assert.equal(read(host).storm, "active");
-  assert.equal(read(guest).players[0].temp, 34.5);
+  assert.equal(read(host).storm, "approaching");
+  assert.equal(read(guest).blizzardCount, 0);
   assert.throws(() => action(guest, "pass"), { code: "MATCH_UNAVAILABLE" });
-  tick(2999);
+  tick(1499);
+  assert.deepEqual(read(guest).players.map(player => player.temp), startingTemps);
+  tick(1);
+  assert.equal(read(guest).storm, "active");
+  assert.equal(read(host).blizzardCount, 1);
+  assert.deepEqual(read(host).players.map(player => player.temp), [36, 34.5]);
+  assert.throws(() => action(guest, "pass"), { code: "MATCH_UNAVAILABLE" });
+  tick(1499);
   assert.equal(read(host).storm, "active");
   tick(1);
   assert.equal(read(guest).storm, null);
@@ -84,13 +92,13 @@ test("an opponent receives no hand, pending placement, preview, draw or deck ord
   }
 
   assert.equal(action(guest, "stage", { index: 0 }).players[1].pending.card, "ice-pack");
-  assert.equal(read(host).players[0].temp, 36.5);
+  assert.equal(read(host).players[0].temp, 38);
   assert.equal(Object.hasOwn(read(host).players[1], "pending"), false);
   assert.equal(read(host).events.some(event => event.card === "ice-pack"), false);
 
   action(guest, "confirm");
   const hostView = read(host);
-  assert.equal(hostView.players[0].temp, 33);
+  assert.equal(hostView.players[0].temp, 34.5);
   assert.deepEqual(hostView.players[1].usedThisTurn, ["ice-pack"]);
   assert.equal(hostView.events.some(event => event.type === "draw"), false);
   assert.equal(read(guest).events.some(event => event.type === "draw"), true);
@@ -121,10 +129,10 @@ test("staging leaves the timer intact and expiry confirms on the server", () => 
   const staged = action(guest, "stage", { index: 0 });
   assert.equal(staged.remainingMs, 500);
   tick(499);
-  assert.equal(read(host).players[0].temp, 36.5);
+  assert.equal(read(host).players[0].temp, 38);
   tick(1);
   const after = read(host);
-  assert.equal(after.players[0].temp, 33);
+  assert.equal(after.players[0].temp, 34.5);
   assert.equal(after.remainingMs, actionMs);
   assert.equal(after.events.find(event => event.type === "timeout").card, "ice-pack");
   assert.throws(() => action(guest, "confirm", {}, staged.version), { code: "STALE_ACTION" });
@@ -161,7 +169,7 @@ test("room watchers wake on updates, keep private events hidden and expire when 
   const confirmed = rooms.watch(code, host.token, staged.version, cursor, signal);
   action(guest, "confirm");
   const update = await confirmed;
-  assert.equal(update.players[0].temp, 33);
+  assert.equal(update.players[0].temp, 34.5);
   assert.ok(update.events.some(event => event.card === "ice-pack"));
   assert.ok(update.events.every(event => event.id > cursor && event.type !== "draw"));
   assert.equal(read(host).version, update.version);

@@ -1,7 +1,7 @@
 "use strict";
 
 const { randomBytes, randomInt } = require("node:crypto");
-const { Match, SETTINGS, hasStatus } = require("./rules.js");
+const { Match, SETTINGS, hasStatus, stormPhaseMs } = require("./rules.js");
 
 const codeAlphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 const codePattern = /^[2-9A-HJ-NP-Z]{6}$/;
@@ -175,7 +175,7 @@ class Rooms {
     } else if (resetClock) {
       this.clearTimer(room);
       const storm = room.match.storm;
-      const delay = storm === "active" ? SETTINGS.stormDuration : SETTINGS.secondsPerAction * 1000;
+      const delay = storm ? stormPhaseMs(storm) : SETTINGS.secondsPerAction * 1000;
       room.deadline = this.now() + delay;
       this.armClock(room);
     }

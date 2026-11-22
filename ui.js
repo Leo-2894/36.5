@@ -187,10 +187,10 @@ function handleEvent(event, live = true) {
     case "recycle":
       log(player.name + " · 버림 더미를 섞었습니다.");
       break;
+    case "stormStart":
+      if (live) playSound("blizzard.mp3", 0.9);
+      break;
     case "blizzard":
-      if (live) {
-        playSound("blizzard.mp3", 0.9);
-      }
       log("Blizzard #" + event.count + " · 기본 피해 -" + event.damage + "°C", "danger");
       break;
     case "result": {
@@ -229,7 +229,7 @@ function scheduleTurn() {
       session.advanceStorm();
       render();
       scheduleTurn();
-    }, SETTINGS.stormDuration);
+    }, GameRules.stormPhaseMs(session.storm));
     return;
   }
   if (session.currentPlayer.isAI) {
@@ -285,6 +285,7 @@ function resetMatch() {
   clearTimeout(flashTimer);
   get("stormNotice").hidden = true;
   get("snow").classList.remove("active");
+  get("snow").style.animationDelay = "";
   BattleEffects.clear();
   get("screenFlash").className = "screen-flash";
   clearDragVisuals();
@@ -377,6 +378,12 @@ function receiveOnlineState(state, events, requestMs, restoring) {
     pending: player.pending && { index: player.pending.index, card: card(player.pending.card) },
     nextCard: card(player.preview),
   }));
+  const snow = get("snow");
+  if (state.storm && !match.storm && state.remainingMs !== null) {
+    const phaseLeft = Math.max(0, state.remainingMs - requestMs / 2);
+    const stormLeft = phaseLeft + (state.storm === "approaching" ? GameRules.stormPhaseMs("active") : 0);
+    snow.style.animationDelay = -Math.max(0, SETTINGS.stormDuration - stormLeft) + "ms";
+  }
   Object.assign(match, {
     players, currentPlayer: players.find(player => player.name === state.current),
     current: state.current, starter: state.starter, turn: state.turn,
@@ -715,8 +722,14 @@ function render() {
   if (!match) return;
   const storm = !match.gameOver && match.storm;
   get("stormNotice").hidden = !storm;
-  get("snow").classList.toggle("active", storm === "active");
-  if (storm) setText(get("stormText"), "3라운드마다 양쪽 기본 피해 −" + GameRules.blizzardDamage(match.blizzardCount) + "°C");
+  const snow = get("snow");
+  snow.classList.toggle("active", Boolean(storm));
+  if (!storm) snow.style.animationDelay = "";
+  if (storm) {
+    const approaching = storm === "approaching";
+    const damage = GameRules.blizzardDamage(match.blizzardCount + Number(approaching));
+    setText(get("stormText"), (approaching ? "눈보라 접근 중 · 양쪽 기본 피해 −" : "눈보라 피해 적용 · 양쪽 기본 피해 −") + damage + "°C");
+  }
   const step = match.turn % SETTINGS.blizzardInterval;
   const gauge = get("blizzardGauge");
   const progress = (step / SETTINGS.blizzardInterval * 100) + "%";

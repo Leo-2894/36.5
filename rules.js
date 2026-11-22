@@ -3,6 +3,7 @@
 const GameRules = (() => {
   const SETTINGS = Object.freeze({
     startTemp: 36.5,
+    secondPlayerBonus: 1.5,
     lossTemp: 25,
     overheatTemp: 40,
     overheatedTemp: 39.5,
@@ -12,6 +13,7 @@ const GameRules = (() => {
     secondsPerAction: 15,
     blizzardInterval: 3,
     stormDuration: 3000,
+    stormImpactDelay: 1500,
     maxBlizzardDamage: 5,
     insulation: 0.6,
     tornClothes: 1.25,
@@ -37,13 +39,13 @@ const GameRules = (() => {
     { id: "smoothie", name: "스무디", type: "체온 저하", target: "opponent", temp: -2 },
     { id: "shaved-ice", name: "빙수", type: "체온 저하", target: "opponent", temp: -3 },
     { id: "cooling-spray", name: "쿨링 스프레이", type: "체온 저하", target: "opponent", temp: -3 },
-    { id: "ice-pack", name: "아이스팩", type: "체온 저하", target: "opponent", temp: -3.5 },
-    { id: "half-and-half", name: "반반팩", type: "복불복", target: "opponent", range: [-3, 1], copies: 2, desc: "상대에게 -3~+1°C 무작위 적용" },
+    { id: "ice-pack", name: "아이스팩", type: "체온 저하", target: "opponent", temp: -3.5, copies: 2 },
+    { id: "half-and-half", name: "반반팩", type: "복불복", target: "opponent", range: [-4, 1], copies: 3, desc: "상대에게 -4~+1°C 무작위 적용" },
     { id: "iced-americano", name: "아이스 아메리카노", type: "복불복", target: "opponent", range: [-3, 0], copies: 2, desc: "상대에게 -3~0°C 무작위 적용" },
     { id: "water-gun", name: "러시안 물총", type: "복불복", target: "random", copies: 2, desc: "50% 확률로 상대 -4°C 또는 자신 -2°C" },
-    { id: "hot-air-blower", name: "열풍기", type: "복불복", target: "self", range: [1, 3], status: "옷 파손", turns: 2, chance: 0.2, copies: 2, desc: "자신에게 +1~3°C, 20% 확률로 옷 파손 2턴" },
+    { id: "hot-air-blower", name: "열풍기", type: "복불복", target: "self", range: [2, 3], status: "옷 파손", turns: 2, chance: 0.1, copies: 2, desc: "자신에게 +2~3°C, 10% 확률로 옷 파손 2턴" },
     { id: "ice-bottle", name: "얼음 유리병", type: "자폭", target: "both", temp: -2, copies: 2, desc: "양쪽 체온 -2°C" },
-    { id: "ice-bucket", name: "아이스 버킷", type: "자폭", target: "both", status: "동상", turns: 2, copies: 2, desc: "양쪽에게 동상 2턴" },
+    { id: "ice-bucket", name: "아이스 버킷", type: "자폭", target: "both", status: "동상", turns: 2, selfTurns: 1, copies: 2, desc: "자신에게 동상 1턴, 상대에게 동상 2턴" },
     { id: "heat-pack", name: "핫팩", type: "효과", target: "self", status: "핫팩", periodic: 1, turns: 3, copies: 2, desc: "다음 내 차례부터 3회, 차례 시작 시 +1°C" },
     { id: "clothes", name: "옷", type: "효과", target: "self", status: "보온", turns: 2, desc: "자신에게 보온 2턴" },
     { id: "tylenol", name: "타이레놀", type: "효과", target: "self", removeDebuff: true, desc: "자신에게 걸린 가장 오래된 디버프 제거" },
@@ -71,6 +73,7 @@ const GameRules = (() => {
   const heals = card => card.target === "self" && (card.temp > 0 || card.range?.[1] > 0 || card.periodic > 0);
   const alwaysUsable = card => card && !heals(card) && !card.removeDebuff;
   const half = amount => Math.sign(amount) * Math.round(Math.abs(amount) * 2) / 2;
+  const stormPhaseMs = phase => phase === "approaching" ? SETTINGS.stormImpactDelay : SETTINGS.stormDuration - SETTINGS.stormImpactDelay;
   const blizzardDamage = count => Math.min(1 + count, SETTINGS.maxBlizzardDamage);
 
   function shuffle(items, random) {
@@ -150,7 +153,9 @@ const GameRules = (() => {
       this.onEvent = onEvent;
       this.starter = starter ?? (random() < 0.5 ? "P1" : "P2");
       this.players = ["P1", "P2"].map(name => ({
-        name, isAI: name === aiPlayer, temp: SETTINGS.startTemp, deck: shuffle(deckTemplate, random),
+        name, isAI: name === aiPlayer,
+        temp: SETTINGS.startTemp + (name === this.starter ? 0 : SETTINGS.secondPlayerBonus),
+        deck: shuffle(deckTemplate, random),
         discard: [], hand: Array(SETTINGS.handSize).fill(null), statuses: [],
         turnsTaken: 0, actionsUsed: 0, usedThisTurn: [], pending: null,
       }));
@@ -200,7 +205,7 @@ const GameRules = (() => {
 
     finishTurn() {
       const player = this.currentPlayer;
-      if (this.gameOver || player.pending || player.turnsTaken === 0) return false;
+      if (this.gameOver || this.storm || player.pending || player.turnsTaken === 0) return false;
 
       expireStatuses(player);
       this.activeIndex = 1 - this.activeIndex;
@@ -210,8 +215,8 @@ const GameRules = (() => {
         this.emit("round", { turn: this.turn });
         if (this.turn % SETTINGS.blizzardInterval === 0) {
           if (this.timedStorms) {
-            this.storm = "active";
-            this.blizzard();
+            this.storm = "approaching";
+            this.emit("stormStart");
             return true;
           }
           this.blizzard();
@@ -258,13 +263,13 @@ const GameRules = (() => {
     }
 
     playableIndices(player = this.currentPlayer) {
-      if (this.gameOver || player.turnsTaken === 0) return [];
+      if (this.gameOver || this.storm || player.turnsTaken === 0) return [];
       return player.hand.flatMap((card, index) => legalCard(player, card) ? [] : [index]);
     }
 
     stage(index) {
       const player = this.currentPlayer;
-      if (this.gameOver || player.turnsTaken === 0 || player.pending || !Number.isInteger(index)) return false;
+      if (this.gameOver || this.storm || player.turnsTaken === 0 || player.pending || !Number.isInteger(index)) return false;
       const card = player.hand[index];
       if (legalCard(player, card)) return false;
       player.pending = { index, card };
@@ -300,7 +305,7 @@ const GameRules = (() => {
 
     timeOut() {
       const player = this.currentPlayer;
-      if (this.gameOver || player.isAI) return;
+      if (this.gameOver || this.storm || player.isAI) return;
       if (!player.pending) {
         const playable = this.playableIndices();
         const actions = playable.filter(index => !player.hand[index].free);
@@ -368,13 +373,19 @@ const GameRules = (() => {
         }
         if (amount !== undefined) this.changeTemp(player, amount, card.name);
         if (card.status && (card.chance === undefined || this.random() < card.chance)) {
-          this.applyStatus(player, card.status, card.turns, card.periodic);
+          const duration = player === user ? card.selfTurns ?? card.turns : card.turns;
+          this.applyStatus(player, card.status, duration, card.periodic);
         }
       }
     }
 
     advanceStorm() {
       if (this.gameOver || !this.storm) return;
+      if (this.storm === "approaching") {
+        this.storm = "active";
+        this.blizzard();
+        return;
+      }
       this.storm = null;
       this.checkResult();
       if (!this.gameOver) this.beginTurn();
@@ -446,16 +457,17 @@ const GameRules = (() => {
       if (card.status) {
         const values = {
           "보온": 4 + 2 * urgent + (roundsUntilBlizzard <= 2 ? 1.5 : 0),
-          "동상": target.temp <= 33 ? 4 : 2,
+          "동상": target.temp <= 33 ? 5 : 2.5,
           "옷 파손": 4.5,
           "핫팩": player.temp <= 34 ? 6.5 : 2,
           "선풍기": opponent.temp <= 30 ? 7 : 5.5,
           "몸살": 8,
           "행동 제한": 8,
-          "회복 제한": opponent.temp <= 33 ? 5.5 : 2.5,
+          "회복 제한": opponent.temp <= 33 ? 7 : 3.5,
         };
         const existing = target.statuses.find(status => status.name === card.status);
-        const marginal = existing ? Math.max(0, card.turns - existing.remaining) / card.turns : 1;
+        const duration = target === player ? card.selfTurns ?? card.turns : card.turns;
+        const marginal = Math.max(0, duration - (existing?.remaining ?? 0)) / card.turns;
         const helpful = card.status === "보온" || card.status === "핫팩";
         const direction = (target === player) === helpful ? 1 : -1;
         score += (values[card.status] ?? 0) * marginal * direction * (card.chance ?? 1);
@@ -529,7 +541,7 @@ const GameRules = (() => {
       risk = passRisk;
     }
     for (const index of indices) {
-      if (index === best || player.hand[index].free || !finalAction) continue;
+      if (index === best || player.hand[index].free) continue;
       const candidateRisk = blizzardLossRisk(match, player, player.hand[index]);
       if (candidateRisk < risk - 1e-9 || (Math.abs(candidateRisk - risk) < 1e-9 && scores[index] > highest)) {
         best = index;
@@ -541,7 +553,7 @@ const GameRules = (() => {
   }
 
   return { SETTINGS, cards: Object.freeze(cards), Match, maxActions, hasStatus, isDebuff, isBuff,
-    legalCard, temperatureDelta, blizzardDamage, chooseCard, scoreCard };
+    legalCard, temperatureDelta, blizzardDamage, stormPhaseMs, chooseCard, scoreCard };
 })();
 
 if (typeof module === "object" && module.exports) module.exports = GameRules;
