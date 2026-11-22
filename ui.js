@@ -116,7 +116,7 @@ function stopBgm() {
   bgm.currentTime = 0;
 }
 
-function handleEvent(event) {
+function handleEvent(event, live = true) {
   const { type, player, card, status } = event;
   switch (type) {
     case "start":
@@ -130,37 +130,38 @@ function handleEvent(event) {
       break;
     case "card":
       log(player.name + " 카드 사용 · " + card.name);
-      showCardCast(player, card);
-
+      if (live) showCardCast(player, card);
       break;
     case "draw":
-      if (!player.isAI) drawnSlot = event.index;
+      if (live && !player.isAI) drawnSlot = event.index;
       break;
     case "temperature": {
       const sign = event.delta > 0 ? "+" : "";
-      showTempFloat(player, event.delta);
+      if (live) showTempFloat(player, event.delta);
       log(player.name + " · " + event.reason + " · " + sign + event.delta + "°C → " + player.temp + "°C",
         event.delta < 0 ? "danger" : event.delta > 0 ? "good" : "notice");
       break;
     }
     case "status":
       log(player.name + " · " + status.name + " " + status.remaining + "턴");
-      showStatusEffect(player, status.name);
+      if (live) showStatusEffect(player, status.name);
       break;
     case "cure":
       log(player.name + " · " + status.name + " 제거", "good");
-      showStatusEffect(player, status.name + " 제거", "special");
+      if (live) showStatusEffect(player, status.name + " 제거", "special");
       break;
     case "overheat":
-      screenFlash("overheat");
-      showBurst(player, "40°C 과열!", "overheat");
+      if (live) {
+        screenFlash("overheat");
+        showBurst(player, "40°C 과열!", "overheat");
+      }
       log(player.name + " · 40°C 과열!", "danger");
       break;
     case "swap":
       log(event.exchanged ? "다음 카드 교체" : "교체할 다음 카드가 부족합니다.");
       break;
     case "waterGun":
-      showRussianHit(player);
+      if (live) showRussianHit(player);
       break;
     case "timeout":
       log("시간 초과 · 자동 확정 · " + card.name);
@@ -175,15 +176,21 @@ function handleEvent(event) {
       log(player.name + " · 버림 더미를 섞었습니다.");
       break;
     case "blizzard":
-      playSound("blizzard.mp3", 0.9);
-      clearTimeout(snowTimer);
-      get("snow").classList.add("active");
-      snowTimer = setTimeout(() => get("snow").classList.remove("active"), 900);
+      if (live) {
+        playSound("blizzard.mp3", 0.9);
+        clearTimeout(snowTimer);
+        get("snow").classList.add("active");
+        snowTimer = setTimeout(() => get("snow").classList.remove("active"), 900);
+      }
       log("Blizzard #" + event.count + " · 기본 피해 -" + event.damage + "°C", "danger");
       break;
     case "result": {
       const title = event.winner === "DRAW" ? "무승부" : event.winner + " 승리";
       log(event.forfeited ? event.forfeited + " 기권 · " + title : title, "danger");
+      if (!live) {
+        showEndingScene(event.winner, event.both, event.forfeited);
+        break;
+      }
       if (!event.forfeited) {
         for (const side of match.players.filter(side => side.temp <= SETTINGS.lossTemp)) {
           showBurst(side, "저체온", "death");
@@ -332,7 +339,7 @@ function renderOnlineTurn() {
   setText(status, onlineNotice || (match.gameOver ? "게임 종료" : ownsTurn() ? "내 차례" : "상대 차례"));
 }
 
-function receiveOnlineState(state, events, requestMs) {
+function receiveOnlineState(state, events, requestMs, restoring) {
   if (!onlineSide) {
     resetMatch();
     onlineSide = state.side;
@@ -355,7 +362,7 @@ function receiveOnlineState(state, events, requestMs) {
     blizzardCount: state.blizzardCount, gameOver: state.phase === "finished",
   });
   onlineDeadline = state.remainingMs === null ? null : performance.now() + Math.max(0, state.remainingMs - requestMs / 2);
-  for (const event of events) handleEvent({ ...event, card: card(event.card) });
+  for (const event of events) handleEvent({ ...event, card: card(event.card) }, !restoring);
   render();
 }
 
