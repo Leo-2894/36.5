@@ -291,7 +291,7 @@ function startMatch() {
   scheduleTurn();
 }
 
-function returnToMainMenu() {
+function returnToMainMenu(event) {
   if (onlineSide) Online.leave();
   resetMatch();
   stopBgm();
@@ -300,6 +300,7 @@ function returnToMainMenu() {
   get("startMenu").classList.remove("hidden");
   get("startGameBtn").focus();
   applyLanguageToPage();
+  if (event) Online.backToDesktop();
 }
 
 function ownsTurn() {
