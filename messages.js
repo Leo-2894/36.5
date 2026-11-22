@@ -554,6 +554,7 @@ for (const [ko, en, ja] of [
   ["한 차례에 행동 1회","One action per turn","手番の行動は1回"],
   ["회복 카드 사용 불가","Healing cards are blocked","回復カードは使用不可"],
   ["다음 카드 비공개","Next card hidden","次のカードは非公開"],
+  ["다음 턴 시작 시 눈보라 · 양쪽 기본 피해","Blizzard next round · base damage to both players","次のラウンド開始時に吹雪 · 両者への基本ダメージ"],
   ["눈보라가 다가옵니다.","A blizzard is approaching.","吹雪が近づいています。"],
   ["3라운드마다 양쪽 기본 피해","Every 3 rounds, base damage to both players","3ラウンドごとに両者への基本ダメージ"],
   ["블리자드","Blizzard","吹雪"],

@@ -11,7 +11,6 @@ const GameRules = (() => {
     actions: 2,
     secondsPerAction: 15,
     blizzardInterval: 3,
-    stormDelay: 1500,
     stormDuration: 3000,
     maxBlizzardDamage: 5,
     insulation: 0.6,
@@ -211,7 +210,8 @@ const GameRules = (() => {
         this.emit("round", { turn: this.turn });
         if (this.turn % SETTINGS.blizzardInterval === 0) {
           if (this.timedStorms) {
-            this.storm = "warning";
+            this.storm = "active";
+            this.blizzard();
             return true;
           }
           this.blizzard();
@@ -348,7 +348,7 @@ const GameRules = (() => {
       const opponent = this.opponentOf(user);
       if (card.target === "random") {
         const target = this.random() < 0.5 ? opponent : user;
-        this.emit("waterGun", { player: target });
+        this.emit("waterGun", { player: target, caster: user.name });
         this.changeTemp(target, target === opponent ? -4 : -2, card.name);
         return;
       }
@@ -375,14 +375,9 @@ const GameRules = (() => {
 
     advanceStorm() {
       if (this.gameOver || !this.storm) return;
-      if (this.storm === "warning") {
-        this.storm = "active";
-        this.blizzard();
-      } else {
-        this.storm = null;
-        this.checkResult();
-        if (!this.gameOver) this.beginTurn();
-      }
+      this.storm = null;
+      this.checkResult();
+      if (!this.gameOver) this.beginTurn();
     }
 
     blizzard() {

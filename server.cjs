@@ -7,7 +7,7 @@ const path = require("node:path");
 const { pipeline } = require("node:stream");
 const { Rooms, RoomError } = require("./rooms.cjs");
 
-const publicFiles = new Set(["index.html", "game.css", "online.css", "rules.js", "messages.js", "ui.js", "online.js"]);
+const publicFiles = new Set(["index.html", "game.css", "online.css", "rules.js", "messages.js", "battle-effects.js", "ui.js", "online.js"]);
 const mediaTypes = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
