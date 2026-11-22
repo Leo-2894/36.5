@@ -146,9 +146,8 @@
       <div class="temp" id="p1Temp">36.5°C</div>
       <div class="bar"><div class="bar-inner" id="p1Bar"></div></div>
       <div class="status-row" id="p1Status"></div>
-      <div class="deck-info">
-        <div>덱 <b id="p1Deck">0</b></div>
-        <div>버림 <b id="p1Discard">0</b></div>
+      <div class="turn-info">
+        <div><span>남은 행동</span><b id="p1Actions">–</b></div>
       </div>
       <div class="preview">
         <div class="preview-title">다음 카드</div>
@@ -188,9 +187,17 @@
           <h3 id="handTitle">P1 손패</h3>
           <span id="onlineTurnStatus" role="status" hidden></span>
         </div>
-        <div id="actionCount">0 / 2</div>
+        <div class="compact-actions" id="handActions" hidden></div>
       </div>
       <div class="cards" id="hand"></div>
+      <div class="card-details" id="cardDetails">
+        <div class="card-details-heading">
+          <strong id="detailName">카드 설명</strong>
+          <span id="detailType" hidden></span>
+          <span id="detailReason" hidden></span>
+        </div>
+        <div id="detailEffect">카드에 커서를 올리거나 Tab으로 설명을 확인하세요.</div>
+      </div>
 
       <div class="btns">
         <button id="endBtn">턴 종료</button>
@@ -207,9 +214,8 @@
       <div class="temp" id="p2Temp">36.5°C</div>
       <div class="bar"><div class="bar-inner" id="p2Bar"></div></div>
       <div class="status-row" id="p2Status"></div>
-      <div class="deck-info">
-        <div>덱 <b id="p2Deck">0</b></div>
-        <div>버림 <b id="p2Discard">0</b></div>
+      <div class="turn-info">
+        <div><span>남은 행동</span><b id="p2Actions">–</b></div>
       </div>
       <div class="preview">
         <div class="preview-title">다음 카드</div>

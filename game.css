@@ -115,13 +115,13 @@
     font-size: 13px;
     font-weight: 900;
   }
-  .deck-info {
+  .turn-info {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 8px;
     margin-top: 12px;
   }
-  .deck-info div {
+  .turn-info div {
     padding: 9px;
     border-radius: 12px;
     background: rgba(0,0,0,.18);
@@ -1703,65 +1703,8 @@
     background: linear-gradient(145deg, rgba(110,92,48,.98), rgba(40,32,44,.98));
   }
 
-  .asset-hover-info {
-    position: absolute;
-    left: 50%;
-    top: calc(100% + 10px);
-    transform: translateX(-50%) translateY(-4px);
-    width: min(280px, 140%);
-    padding: 18px 20px 18px;
-    border-radius: 16px;
-    border: 1px solid rgba(255,255,255,.48);
-    background: linear-gradient(180deg, rgba(2,5,10,1), rgba(8,12,20,0.998));
-    box-shadow: 0 28px 72px rgba(0,0,0,.82), 0 0 0 1px rgba(255,255,255,.12) inset;
-    opacity: 0;
-    pointer-events: none;
-    z-index: 150;
-    transition: opacity .14s ease, transform .14s ease;
-    backdrop-filter: none;
-  }
-  .card-shell.asset-skin:hover .asset-hover-info,
-  .card-shell.asset-skin:focus-within .asset-hover-info {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
   .card-shell.asset-skin:hover {
     z-index: 160;
-  }
-  .asset-hover-name {
-    color: #ffffff;
-    text-shadow: 0 1px 0 rgba(0,0,0,.7);
-    font-size: 18px;
-    font-weight: 1000;
-    line-height: 1.25;
-    margin-bottom: 7px;
-    word-break: keep-all;
-  }
-  .asset-hover-type {
-    display: inline-block;
-    padding: 3px 9px;
-    border-radius: 999px;
-    color: #f0f6ff;
-    background: linear-gradient(180deg, rgba(255,255,255,.18), rgba(255,255,255,.09));
-    font-size: 12px;
-    font-weight: 900;
-    margin-bottom: 10px;
-  }
-  .asset-hover-desc {
-    color: #fbfdff;
-    font-size: 15px;
-    font-weight: 820;
-    line-height: 1.5;
-    word-break: keep-all;
-  }
-  .asset-hover-target {
-    margin-top: 10px;
-    padding-top: 10px;
-    border-top: 1px solid rgba(255,255,255,.24);
-    color: #ffffff;
-    font-size: 14px;
-    font-weight: 850;
-    line-height: 1.4;
   }
   .card-shell.asset-skin.disabled .asset-card-image {
     /* 색은 유지하고 살짝 어둡게만 (완전 흑백 grayscale 제거) */
@@ -1808,33 +1751,6 @@
     z-index: 1;
   }
 
-  /* 호버 정보 */
-  .asset-hover-info {
-    top: calc(100% + 14px) !important;
-    width: min(270px, 132%) !important;
-    padding: 16px 18px 17px !important;
-    border: 1px solid rgba(255,255,255,.34) !important;
-    background: linear-gradient(145deg, rgba(7,13,23,.99), rgba(27,43,65,.99)) !important;
-    box-shadow: 0 24px 64px rgba(0,0,0,.58), 0 0 0 1px rgba(255,255,255,.07) inset !important;
-    backdrop-filter: blur(9px);
-  }
-  .asset-hover-name {
-    font-size: 18px !important;
-    color: #fff !important;
-  }
-  .asset-hover-type {
-    font-size: 12px !important;
-    background: linear-gradient(180deg, rgba(255,255,255,.18), rgba(255,255,255,.10)) !important;
-  }
-  .asset-hover-desc {
-    font-size: 14px !important;
-    color: #eef6ff !important;
-  }
-  .asset-hover-target {
-    font-size: 13px !important;
-    color: #dbeaff !important;
-    border-top: 1px solid rgba(255,255,255,.20) !important;
-  }
 
   /* 커스텀 카드 이미지: 원본 그대로 가운데 정렬 */
   .asset-card-image.has-custom-asset {
@@ -1975,38 +1891,12 @@
     font-size: 60px !important;
     opacity: .64 !important;
   }
-  .asset-hover-info.always-visible {
-    opacity: 1 !important;
-    transform: translateX(-50%) translateY(0) !important;
-  }
   .waiting-info {
     width: min(250px, 128%) !important;
   }
 
-  /* 정보 패널 */
-  .asset-hover-info {
-    border-color: rgba(255,255,255,.34) !important;
-    background: linear-gradient(145deg, rgba(8,14,25,.995), rgba(28,43,64,.99)) !important;
-    box-shadow: 0 20px 54px rgba(0,0,0,.52), 0 0 0 1px rgba(255,255,255,.08) inset !important;
-  }
-  .asset-hover-desc {
-    color: #f2f6ff !important;
-  }
-  .asset-hover-target {
-    color: #dce7ff !important;
-  }
 
 
-  /* 대기 카드 정보가 버튼·로그를 가리지 않도록 */
-  .asset-hover-info.always-visible {
-    opacity: 0 !important;
-    transform: translateX(-50%) translateY(-4px) !important;
-  }
-  .card-shell.waiting-card:hover .asset-hover-info,
-  .card-shell.waiting-card:focus-within .asset-hover-info {
-    opacity: 1 !important;
-    transform: translateX(-50%) translateY(0) !important;
-  }
   .card-shell.waiting-card.disabled {
     opacity: .82 !important;
   }
@@ -2049,9 +1939,6 @@
     opacity: .96;
     transform: rotate(-2deg) scale(.97);
     filter: drop-shadow(0 28px 34px rgba(0,0,0,.52));
-  }
-  .drag-ghost-card .asset-hover-info {
-    display: none !important;
   }
   body.is-dragging-card .slot.drop-candidate {
     border-color: rgba(185,236,255,.54) !important;
@@ -2293,13 +2180,13 @@
     padding: 6px 10px !important;
   }
 
-  .deck-info {
+  .turn-info {
     grid-template-columns: 1fr !important;
     gap: 7px !important;
     margin-top: 10px !important;
   }
 
-  .deck-info div {
+  .turn-info div {
     min-height: 32px;
     display: flex;
     align-items: center;
@@ -2466,11 +2353,6 @@
     line-height: 1;
   }
 
-  #actionCount {
-    font-size: 18px;
-    font-weight: 1000;
-    line-height: 1;
-  }
 
   .cards {
     min-height: 0 !important;
@@ -2575,9 +2457,6 @@
     box-shadow: inset 0 0 28px rgba(255,209,102,.20), 0 0 0 1px rgba(255,209,102,.16) !important;
   }
 
-  .drag-ghost-card .asset-hover-info {
-    display: none !important;
-  }
 
   @media (max-height: 850px) {
     .wrap {
@@ -2939,7 +2818,7 @@
     height: 124px !important;
   }
 
-  .deck-info div,
+  .turn-info div,
   .mini-card {
     max-width: 100% !important;
   }
@@ -3210,10 +3089,6 @@
     line-height: 1 !important;
   }
 
-  #actionCount {
-    font-size: 17px !important;
-    line-height: 1 !important;
-  }
 
   .cards {
     height: 286px !important;
@@ -3290,10 +3165,6 @@
     overflow-y: auto !important;
   }
 
-  /* 드래그·호버 레이어를 트레이 위로 */
-  .asset-hover-info {
-    z-index: 220 !important;
-  }
 
   .drag-ghost-card {
     z-index: 9999 !important;
@@ -3539,9 +3410,6 @@
     font-size: 18px !important;
   }
 
-  #actionCount {
-    font-size: 18px !important;
-  }
 
   /* 카드 행 */
   .cards {
@@ -4055,9 +3923,6 @@
     font-size: 27px !important;
   }
 
-  .drag-ghost-card.mini-drag-card .asset-hover-info {
-    display: none !important;
-  }
 
   .card-shell.asset-skin.dragging {
     opacity: .28 !important;
@@ -4082,9 +3947,6 @@
     transition: none !important;
   }
 
-  .drag-ghost-card.mini-drag-card-fixed .asset-hover-info {
-    display: none !important;
-  }
 
   .card-shell.asset-skin.dragging {
     opacity: .34 !important;
@@ -4107,7 +3969,7 @@ body:not(.game-not-started) .wrap {
 
 .center {
   min-width: 0;
-  grid-template-rows: 44px 106px 24px minmax(160px, 1fr) 44px 80px !important;
+  grid-template-rows: 44px clamp(76px, 12vh, 106px) 24px minmax(140px, 1fr) auto 44px clamp(56px, 9vh, 78px) !important;
   padding: 12px 14px !important;
   gap: 8px !important;
 }
@@ -4200,24 +4062,8 @@ body:not(.game-not-started) .wrap {
   overflow: visible !important;
 }
 
-.cards .asset-hover-info {
-  top: auto !important;
-  bottom: calc(100% + 5px) !important;
-  width: clamp(120px, 135%, 240px) !important;
-  max-width: 78vw;
-  padding: 9px 12px !important;
-}
 
-.cards .card-shell:first-child .asset-hover-info {
-  left: 0 !important;
-  translate: 50% 0;
-}
 
-.cards .card-shell:last-child .asset-hover-info {
-  left: auto !important;
-  right: 0 !important;
-  translate: 50% 0;
-}
 
 .game .btns {
   height: 100% !important;
@@ -4237,6 +4083,56 @@ button:focus-visible {
   outline: 2px solid #9cddff;
   outline-offset: 2px;
 }
+
+.card-details {
+  --spark: #b5d7ee;
+  min-width: 0;
+  min-height: 68px;
+  padding: 7px 11px;
+  border: 1px solid #365165;
+  border-inline-start: 3px solid var(--spark);
+  border-radius: 11px;
+  background: #101d2b;
+  color: #edf6ff;
+  overflow-wrap: anywhere;
+}
+
+.card-details-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 9px;
+  margin-bottom: 3px;
+}
+
+#detailName { font-size: 16px; line-height: 1.25; }
+#detailType {
+  color: var(--spark);
+  background: color-mix(in srgb, var(--spark) 12%, #142433);
+  border: 1px solid color-mix(in srgb, var(--spark) 33%, #142433);
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 700;
+}
+#detailReason { color: #ffd6a2; font-size: 12px; font-weight: 700; }
+#detailEffect { font-size: 14px; font-weight: 600; line-height: 1.4; }
+[data-tone="neutral"] #detailEffect { color: #c2d4e4; font-weight: 500; }
+.cards .card-shell.inspected {
+  outline: 2px solid #9cddff;
+  outline-offset: 2px;
+}
+
+.player .turn-info > div {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  color: #c1d4e6;
+  text-align: left;
+}
+.turn-info b { color: #b2c5d8; font-size: 13px; font-variant-numeric: tabular-nums; }
+.taking-turn .turn-info b { color: #f0fbff; font-size: 17px; }
+.compact-actions { display: none; white-space: nowrap; font-size: 12px; font-variant-numeric: tabular-nums; }
 
 .ai-hand-message {
   grid-column: 1 / -1;
@@ -4266,9 +4162,10 @@ button:focus-visible {
   }
 
   .game { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
-  .center { grid-column: 1 / -1; grid-row: 1; grid-template-rows: 44px 100px 24px 180px 44px 80px !important; }
+  .center { grid-column: 1 / -1; grid-row: 1; grid-template-rows: 44px 92px 24px 165px auto 44px 68px !important; }
   .player .temp { margin-top: 16px !important; }
   .player::before { display: none; }
+  .compact-actions { display: block; }
   .phase { grid-template-columns: minmax(0, 1fr) 88px !important; }
   .phase .timer { width: 88px !important; min-width: 88px !important; }
   .topbar { grid-template-columns: auto 1fr auto !important; }
@@ -4280,6 +4177,15 @@ button:focus-visible {
     animation-duration: 0.001ms !important;
     transition-duration: 0.001ms !important;
   }
+}
+
+@media (max-width: 520px) {
+  .game .btns {
+    display: grid !important;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+  }
+  .game .btns button { width: 100%; overflow-wrap: anywhere; }
 }
 
 
@@ -4319,7 +4225,6 @@ button:focus-visible {
   background: linear-gradient(145deg,#25405299,#112332c9) !important;
 }
 .hand-heading h3 { letter-spacing: .04em; }
-#actionCount { font-variant-numeric: tabular-nums; }
 #endBtn.confirm-ready { background: linear-gradient(110deg,#8df2d5,#a8dfff) !important; color: #102b37 !important; }
 [data-tone="heat"] { --spark: #ffc077; }
 [data-tone="ice"] { --spark: #85e5ff; }
