@@ -3,7 +3,7 @@
 const GameRules = (() => {
   const SETTINGS = Object.freeze({
     startTemp: 36.5,
-    secondPlayerBonus: 1.5,
+    openingCounterDamage: 2,
     lossTemp: 25,
     overheatTemp: 40,
     overheatedTemp: 39.5,
@@ -14,7 +14,10 @@ const GameRules = (() => {
     blizzardInterval: 3,
     stormDuration: 3000,
     stormImpactDelay: 1500,
-    maxBlizzardDamage: 5,
+    minBlizzardDamage: 1.5,
+    maxBlizzardDamage: 5.5,
+    blizzardMinAt: 26,
+    blizzardMaxAt: 38,
     insulation: 0.6,
     tornClothes: 1.25,
     feverDamage: 1.5,
@@ -40,10 +43,10 @@ const GameRules = (() => {
     { id: "shaved-ice", name: "빙수", type: "체온 저하", target: "opponent", temp: -3 },
     { id: "cooling-spray", name: "쿨링 스프레이", type: "체온 저하", target: "opponent", temp: -3 },
     { id: "ice-pack", name: "아이스팩", type: "체온 저하", target: "opponent", temp: -3.5, copies: 2 },
-    { id: "half-and-half", name: "반반팩", type: "복불복", target: "opponent", range: [-4, 1], copies: 3, desc: "상대에게 -4~+1°C 무작위 적용" },
-    { id: "iced-americano", name: "아이스 아메리카노", type: "복불복", target: "opponent", range: [-3, 0], copies: 2, desc: "상대에게 -3~0°C 무작위 적용" },
-    { id: "water-gun", name: "러시안 물총", type: "복불복", target: "random", copies: 2, desc: "50% 확률로 상대 -4°C 또는 자신 -2°C" },
-    { id: "hot-air-blower", name: "열풍기", type: "복불복", target: "self", range: [2, 3], status: "옷 파손", turns: 2, chance: 0.1, copies: 2, desc: "자신에게 +2~3°C, 10% 확률로 옷 파손 2턴" },
+    { id: "half-and-half", name: "반반팩", type: "복불복", target: "opponent", range: [-6, 3], copies: 3, desc: "상대에게 -6~+3°C 무작위 적용" },
+    { id: "iced-americano", name: "아이스 아메리카노", type: "복불복", target: "opponent", range: [-5, 0], copies: 2, desc: "상대에게 -5~0°C 무작위 적용" },
+    { id: "water-gun", name: "러시안 물총", type: "복불복", target: "random", temp: -6, selfTemp: -4, copies: 2, desc: "50% 확률로 상대 -6°C 또는 자신 -4°C" },
+    { id: "hot-air-blower", name: "열풍기", type: "복불복", target: "self", range: [0, 5], status: "옷 파손", turns: 2, chance: 0.1, copies: 2, desc: "자신에게 0~+5°C, 10% 확률로 옷 파손 2턴" },
     { id: "ice-bottle", name: "얼음 유리병", type: "자폭", target: "both", temp: -2, copies: 2, desc: "양쪽 체온 -2°C" },
     { id: "ice-bucket", name: "아이스 버킷", type: "자폭", target: "both", status: "동상", turns: 2, selfTurns: 1, copies: 2, desc: "자신에게 동상 1턴, 상대에게 동상 2턴" },
     { id: "heat-pack", name: "핫팩", type: "효과", target: "self", status: "핫팩", periodic: 1, turns: 3, copies: 2, desc: "다음 내 차례부터 3회, 차례 시작 시 +1°C" },
@@ -64,7 +67,7 @@ const GameRules = (() => {
   }));
   const deckTemplate = cards.flatMap(card => Array(card.copies).fill(card));
   const debuffs = new Set(["옷 파손", "동상", "몸살", "실명", "행동 제한", "회복 제한", "선풍기"]);
-  const buffs = new Set(["보온", "핫팩"]);
+  const buffs = new Set(["보온", "핫팩", "후공 보너스"]);
 
   const isDebuff = name => debuffs.has(name);
   const isBuff = name => buffs.has(name);
@@ -74,7 +77,6 @@ const GameRules = (() => {
   const alwaysUsable = card => card && !heals(card) && !card.removeDebuff;
   const half = amount => Math.sign(amount) * Math.round(Math.abs(amount) * 2) / 2;
   const stormPhaseMs = phase => phase === "approaching" ? SETTINGS.stormImpactDelay : SETTINGS.stormDuration - SETTINGS.stormImpactDelay;
-  const blizzardDamage = count => Math.min(1 + count, SETTINGS.maxBlizzardDamage);
 
   function shuffle(items, random) {
     const deck = [...items];
@@ -145,16 +147,31 @@ const GameRules = (() => {
     return half(amount * factor);
   }
 
+  function blizzardDamage(player) {
+    const { minBlizzardDamage, maxBlizzardDamage, blizzardMinAt, blizzardMaxAt } = SETTINGS;
+    const progress = Math.min(1, Math.max(0, (player.temp - blizzardMinAt) / (blizzardMaxAt - blizzardMinAt)));
+    const baseDamage = half(minBlizzardDamage + progress * (maxBlizzardDamage - minBlizzardDamage));
+    const actual = -temperatureDelta(player, -baseDamage);
+    return Math.min(maxBlizzardDamage, Math.max(minBlizzardDamage, actual));
+  }
+
+  function cardTemperature(user, target, amount) {
+    return amount < 0 && user !== target && hasStatus(user, "후공 보너스")
+      ? amount - SETTINGS.openingCounterDamage
+      : amount;
+  }
+
   class Match {
     constructor({ random = Math.random, onEvent = () => {}, starter, aiPlayer = "P2", timedStorms = false } = {}) {
       this.timedStorms = timedStorms;
       this.storm = null;
+      this.stormDamage = null;
       this.random = random;
       this.onEvent = onEvent;
       this.starter = starter ?? (random() < 0.5 ? "P1" : "P2");
       this.players = ["P1", "P2"].map(name => ({
         name, isAI: name === aiPlayer,
-        temp: SETTINGS.startTemp + (name === this.starter ? 0 : SETTINGS.secondPlayerBonus),
+        temp: SETTINGS.startTemp,
         deck: shuffle(deckTemplate, random),
         discard: [], hand: Array(SETTINGS.handSize).fill(null), statuses: [],
         turnsTaken: 0, actionsUsed: 0, usedThisTurn: [], pending: null,
@@ -183,6 +200,7 @@ const GameRules = (() => {
     start() {
       if (this.players.some(player => player.turnsTaken > 0)) return;
       this.emit("start", { player: this.currentPlayer });
+      this.applyStatus(this.opponentOf(this.currentPlayer), "후공 보너스", 1);
       this.beginTurn();
     }
 
@@ -337,8 +355,12 @@ const GameRules = (() => {
     }
 
     changeTemp(player, amount, reason) {
+      this.applyTemperatureDelta(player, temperatureDelta(player, amount), reason);
+    }
+
+    applyTemperatureDelta(player, delta, reason) {
       const before = player.temp;
-      const next = before + temperatureDelta(player, amount);
+      const next = before + delta;
       const overheated = next >= SETTINGS.overheatTemp;
       player.temp = overheated ? SETTINGS.overheatedTemp : next;
       this.emit("temperature", { player, delta: player.temp - before, reason });
@@ -354,7 +376,7 @@ const GameRules = (() => {
       if (card.target === "random") {
         const target = this.random() < 0.5 ? opponent : user;
         this.emit("waterGun", { player: target, caster: user.name });
-        this.changeTemp(target, target === opponent ? -4 : -2, card.name);
+        this.changeTemp(target, cardTemperature(user, target, target === opponent ? card.temp : card.selfTemp), card.name);
         return;
       }
 
@@ -371,7 +393,7 @@ const GameRules = (() => {
             this.emit("cure", { player, status: removed });
           }
         }
-        if (amount !== undefined) this.changeTemp(player, amount, card.name);
+        if (amount !== undefined) this.changeTemp(player, cardTemperature(user, player, amount), card.name);
         if (card.status && (card.chance === undefined || this.random() < card.chance)) {
           const duration = player === user ? card.selfTurns ?? card.turns : card.turns;
           this.applyStatus(player, card.status, duration, card.periodic);
@@ -387,14 +409,16 @@ const GameRules = (() => {
         return;
       }
       this.storm = null;
+      this.stormDamage = null;
       this.checkResult();
       if (!this.gameOver) this.beginTurn();
     }
 
     blizzard() {
-      const damage = blizzardDamage(++this.blizzardCount);
-      this.emit("blizzard", { count: this.blizzardCount, damage });
-      for (const player of this.players) this.changeTemp(player, -damage, "Blizzard");
+      const damage = Object.fromEntries(this.players.map(player => [player.name, blizzardDamage(player)]));
+      if (this.storm) this.stormDamage = damage;
+      this.emit("blizzard", { count: ++this.blizzardCount, damage });
+      for (const player of this.players) this.applyTemperatureDelta(player, -damage[player.name], "Blizzard");
       if (!this.storm) this.checkResult();
     }
 
@@ -422,7 +446,7 @@ const GameRules = (() => {
     const urgent = player.temp <= 31 ? 1.65 : player.temp <= 34 ? 1.15 : 0.72;
 
     function scoreTemperature(target, amount) {
-      const delta = temperatureDelta(target, amount);
+      const delta = temperatureDelta(target, cardTemperature(player, target, amount));
       const next = target.temp + delta;
       if (next <= SETTINGS.lossTemp) return target === player ? -100 : 105;
       if (target === opponent) return -delta * (opponent.temp <= 31 ? 4.2 : 2.65);
@@ -433,10 +457,13 @@ const GameRules = (() => {
     }
 
     if (card.free) return 8;
-    if (card.target === "random") return (scoreTemperature(player, -2) + scoreTemperature(opponent, -4)) / 2;
-    if (card.id === "ice-bottle" && match.players.every(side => side.temp + temperatureDelta(side, -2) <= SETTINGS.lossTemp)) {
-      const difference = player.temp + temperatureDelta(player, -2) - opponent.temp - temperatureDelta(opponent, -2);
-      return difference > 0 ? 110 : difference < 0 ? -105 : 2;
+    if (card.target === "random") return (scoreTemperature(player, card.selfTemp) + scoreTemperature(opponent, card.temp)) / 2;
+    if (card.id === "ice-bottle") {
+      const selfAfter = player.temp + temperatureDelta(player, card.temp);
+      const rivalAfter = opponent.temp + temperatureDelta(opponent, cardTemperature(player, opponent, card.temp));
+      if (selfAfter <= SETTINGS.lossTemp && rivalAfter <= SETTINGS.lossTemp) {
+        return selfAfter > rivalAfter ? 110 : selfAfter < rivalAfter ? -105 : 2;
+      }
     }
     if (card.removeDebuff) {
       const first = player.statuses.find(status => isDebuff(status.name));
@@ -528,9 +555,11 @@ const GameRules = (() => {
     const blizzardNext = player === match.currentPlayer && player.name !== match.starter &&
       (match.turn + 1) % SETTINGS.blizzardInterval === 0;
     const finalAction = player.actionsUsed + 1 >= maxActions(player);
-    const maxDamage = half(-(blizzardDamage(match.blizzardCount + 1) + 2) * SETTINGS.maxDamageMultiplier);
+    const selected = player.hand[best];
+    const selfDamage = selected?.target === "both" ? selected.temp ?? 0 : selected?.selfTemp ?? 0;
+    const maxSelfDamage = half(-selfDamage * SETTINGS.maxDamageMultiplier);
     if (!blizzardNext || (best !== -1 && (!finalAction || player.hand[best].free)) ||
-        player.temp + maxDamage > SETTINGS.lossTemp) return best;
+        player.temp - maxSelfDamage - SETTINGS.maxBlizzardDamage > SETTINGS.lossTemp) return best;
 
     let risk = blizzardLossRisk(match, player, player.hand[best]);
     if (risk === 0) return best;
