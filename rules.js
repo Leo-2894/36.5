@@ -28,6 +28,8 @@ const GameRules = (() => {
     minHealingMultiplier: 0.5,
   });
 
+  const emotes = Object.freeze(["wave", "nice", "cold", "fire"]);
+
   const cards = [
     { id: "hot-chocolate", name: "핫초코", type: "체온 상승", target: "self", temp: 1.5 },
     { id: "roasted-chestnuts", name: "군밤", type: "체온 상승", target: "self", temp: 1.5 },
@@ -606,7 +608,7 @@ const GameRules = (() => {
     return best;
   }
 
-  return { SETTINGS, cards: Object.freeze(cards), Match, maxActions, hasStatus, isDebuff, isBuff,
+  return { SETTINGS, emotes, cards: Object.freeze(cards), Match, maxActions, hasStatus, isDebuff, isBuff,
     legalCard, temperatureDelta, blizzardDamage, stormPhaseMs, chooseCard, scoreCard };
 })();
 

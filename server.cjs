@@ -49,7 +49,7 @@ function localAddresses() {
   return Object.entries(os.networkInterfaces()).flatMap(([name, interfaces]) => interfaces
     .filter(info => info.family === "IPv4" && !info.internal && !info.address.startsWith("169.254."))
     .map(info => ({ name, address: info.address })))
-    .sort((a, b) => Number(/virtual|vethernet|vmware|docker/i.test(a.name)) - Number(/virtual|vethernet|vmware|docker/i.test(b.name)))
+    .sort((a, b) => Number(/virtual|vethernet|vmware|docker|wsl|vpn|tailscale|zerotier|wireguard/i.test(a.name)) - Number(/virtual|vethernet|vmware|docker|wsl|vpn|tailscale|zerotier|wireguard/i.test(b.name)))
     .map(info => info.address);
 }
 

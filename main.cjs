@@ -66,13 +66,26 @@ async function publishInternetInvite(session, port) {
 async function hostGame(session, mode) {
   const internet = mode === "internet";
   const { server } = session;
-  await new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(internet ? 0 : defaultPort, internet ? "127.0.0.1" : "0.0.0.0", () => {
-      server.off("error", reject);
+  const address = internet ? "127.0.0.1" : "0.0.0.0";
+  const listen = port => new Promise((resolve, reject) => {
+    const onError = error => {
+      server.off("listening", onListen);
+      reject(error);
+    };
+    const onListen = () => {
+      server.off("error", onError);
       resolve();
-    });
+    };
+    server.once("error", onError);
+    server.once("listening", onListen);
+    server.listen(port, address);
   });
+  try {
+    await listen(internet ? 0 : defaultPort);
+  } catch (error) {
+    if (internet || error.code !== "EADDRINUSE") throw error;
+    await listen(0);
+  }
   const port = server.address().port;
   if (internet) void publishInternetInvite(session, port);
   return "http://127.0.0.1:" + port;

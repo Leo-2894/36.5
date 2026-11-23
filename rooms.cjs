@@ -1,12 +1,13 @@
 "use strict";
 
 const { randomBytes, randomInt } = require("node:crypto");
-const { Match, SETTINGS, hasStatus, stormPhaseMs } = require("./rules.js");
+const { Match, SETTINGS, emotes, hasStatus, stormPhaseMs } = require("./rules.js");
 
 const codeAlphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 const codePattern = /^[2-9A-HJ-NP-Z]{6}$/;
 const sideNames = ["P1", "P2"];
 const maxRooms = 128;
+const emoteCooldown = 1200;
 const waitLifetime = 30 * 60_000;
 const matchLifetime = 2 * 60 * 60_000;
 const resultLifetime = 15 * 60_000;
@@ -60,7 +61,8 @@ class Rooms {
     } while (this.items.has(code));
     const token = randomBytes(24).toString("base64url");
     const room = {
-      code, tokens: [token], match: null, version: 1, log: [],
+      code, tokens: [token], ready: [false, false], lobbyId: 0,
+      match: null, version: 1, actionVersion: 0, lastEmote: [-Infinity, -Infinity], log: [],
       eventId: 0, timer: null, deadline: null, expiresAt: this.now() + waitLifetime, listeners: new Map(),
     };
     this.items.set(code, room);
@@ -79,10 +81,10 @@ class Rooms {
     if (room.tokens.length === 2) throw new RoomError(409, "ROOM_FULL");
     const token = randomBytes(24).toString("base64url");
     room.tokens.push(token);
-    room.expiresAt = this.now() + matchLifetime;
-    room.match = new Match({ aiPlayer: null, timedStorms: true, random: this.random, onEvent: event => this.record(room, event) });
-    room.match.start();
-    this.commit(room, true);
+    room.lobbyId++;
+    room.ready.fill(false);
+    room.expiresAt = this.now() + waitLifetime;
+    this.commit(room);
     return { token, state: this.snapshot(room, "P2") };
   }
 
@@ -125,16 +127,66 @@ class Rooms {
 
   leave(code, token) {
     const { room, side } = this.authorize(code, token);
-    if (!room.match) this.drop(room);
-    else if (room.match.forfeit(side === "P1" ? room.match.p1 : room.match.p2)) this.commit(room);
+    if (room.match) {
+      if (room.match.forfeit(side === "P1" ? room.match.p1 : room.match.p2)) this.commit(room);
+    } else if (side === "P1") {
+      this.drop(room);
+    } else {
+      room.tokens.pop();
+      room.lobbyId++;
+      room.ready.fill(false);
+      room.expiresAt = this.now() + waitLifetime;
+      this.commit(room);
+    }
+  }
+
+  setReady(room, side, command) {
+    if (room.lobbyId !== command.lobbyId) throw new RoomError(409, "STALE_ACTION");
+    if (typeof command.ready !== "boolean") throw new RoomError(400, "INVALID_ACTION");
+    if (room.match) {
+      if (command.ready) return;
+      throw new RoomError(409, "MATCH_UNAVAILABLE");
+    }
+    if (room.tokens.length !== 2) throw new RoomError(409, "MATCH_UNAVAILABLE");
+
+    const seat = sideNames.indexOf(side);
+    if (room.ready[seat] === command.ready) return;
+    room.ready[seat] = command.ready;
+    if (room.ready.every(Boolean)) {
+      room.expiresAt = this.now() + matchLifetime;
+      room.match = new Match({ aiPlayer: null, timedStorms: true, random: this.random, onEvent: event => this.record(room, event) });
+      room.match.start();
+    }
+    this.commit(room, Boolean(room.match));
+  }
+
+  sendEmote(room, side, emote) {
+    if (!room.match || room.match.gameOver) throw new RoomError(409, "MATCH_UNAVAILABLE");
+    if (!emotes.includes(emote)) throw new RoomError(400, "INVALID_ACTION");
+    const seat = sideNames.indexOf(side);
+    const now = this.now();
+    if (now - room.lastEmote[seat] < emoteCooldown) throw new RoomError(429, "EMOTE_COOLDOWN");
+    room.lastEmote[seat] = now;
+    this.record(room, { type: "emote", from: side, emote });
+    // Keep reactions out of the turn revision so they cannot invalidate a card action.
+    room.version++;
+    this.notify(room);
   }
 
   action(code, token, command, eventId = 0) {
     const { room, side } = this.authorize(code, token);
     this.expireAction(room);
+    if (command.type === "ready") {
+      this.setReady(room, side, command);
+      return this.snapshot(room, side, eventId);
+    }
+    if (command.type === "emote") {
+      this.sendEmote(room, side, command.emote);
+      return this.snapshot(room, side, eventId);
+    }
     const match = room.match;
     if (!match || match.gameOver || match.storm) throw new RoomError(409, "MATCH_UNAVAILABLE");
-    if (command.version !== room.version) throw new RoomError(409, "STALE_ACTION");
+    if (command.version !== room.actionVersion) throw new RoomError(409, "STALE_ACTION");
     if (match.current !== side) throw new RoomError(409, "OPPONENT_TURN");
 
     let changed;
@@ -169,6 +221,11 @@ class Rooms {
 
   commit(room, resetClock = false) {
     room.version++;
+    if (!room.match) {
+      this.notify(room);
+      return;
+    }
+    room.actionVersion = room.version;
     if (room.match.gameOver) {
       this.clearTimer(room);
       room.expiresAt = this.now() + resultLifetime;
@@ -203,13 +260,19 @@ class Rooms {
   }
 
   snapshot(room, side, eventId = 0) {
-    const state = { code: room.code, side, version: room.version, phase: "waiting" };
+    const state = { code: room.code, side, version: room.version };
     const match = room.match;
-    if (!match) return state;
+    if (!match) return {
+      ...state,
+      phase: room.tokens.length === 2 ? "lobby" : "waiting",
+      lobbyId: room.lobbyId,
+      ready: [...room.ready],
+    };
 
     return {
       ...state,
       phase: match.gameOver ? "finished" : "playing",
+      actionVersion: room.actionVersion,
       turn: match.turn, blizzardCount: match.blizzardCount, current: match.current,
       storm: match.gameOver ? null : match.storm,
       stormDamage: match.stormDamage,
