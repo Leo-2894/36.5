@@ -30,6 +30,10 @@ const slotLayouts = new WeakMap();
 const playerReadings = new WeakMap();
 const statusLayouts = new WeakMap();
 const queuedSwaps = new Map();
+const reactions = {
+  wave: ["👋", "인사"], nice: ["👍", "좋아요"], cold: ["🥶", "추워요"], fire: ["🔥", "불타오르네"],
+};
+const reactionHide = new Map();
 let logNeedsScroll = false;
 const cardTones = { "체온 상승": "heat", "체온 저하": "ice", "복불복": "chance", "효과": "status", "자폭": "fracture", "스페셜": "rare" };
 
@@ -120,6 +124,9 @@ function stopBgm() {
 function handleEvent(event, live = true) {
   const { type, player, card, status } = event;
   switch (type) {
+    case "emote":
+      if (live) showReaction(event.from, event.emote);
+      break;
     case "start":
       log(player.name + " 선공 · 게임 시작", "good");
       break;
@@ -289,6 +296,14 @@ function resetMatch() {
   Snowfall.update(false);
   BattleEffects.clear();
   queuedSwaps.clear();
+  for (const timer of reactionHide.values()) clearTimeout(timer);
+  reactionHide.clear();
+  for (const prefix of ["p1", "p2"]) {
+    const row = get(prefix + "Reactions");
+    row.hidden = true;
+    row.querySelector("output").hidden = true;
+    for (const button of row.querySelectorAll("button")) button.disabled = false;
+  }
   document.querySelectorAll(".preview-swap").forEach(effect => effect.remove());
   get("screenFlash").className = "screen-flash";
   clearDragVisuals();
@@ -472,8 +487,22 @@ async function cancelSelection(event) {
   }
 }
 
+function showReaction(side, emote) {
+  const reaction = reactions[emote];
+  if (!reaction || !["P1", "P2"].includes(side)) return;
+  const bubble = get(side.toLowerCase() + "Reactions").querySelector("output");
+  const [emoji, label] = reaction;
+  setText(bubble, emoji + " " + label);
+  bubble.hidden = false;
+  clearTimeout(reactionHide.get(side));
+  reactionHide.set(side, setTimeout(() => { bubble.hidden = true; reactionHide.delete(side); }, 2100));
+}
+
 function renderPlayer(player) {
   const prefix = playerPrefix(player);
+  const row = get(prefix + "Reactions");
+  setFlag(row, "hidden", !onlineSide || match.gameOver);
+  setFlag(row.querySelector(".reaction-buttons"), "hidden", onlineSide !== player.name);
   const temp = get(prefix + "Temp");
   const panel = temp.closest(".player");
   panel.classList.toggle("chained", hasStatus(player, "행동 제한"));
@@ -827,6 +856,23 @@ function render() {
 }
 
 for (const prefix of ["p1", "p2"]) {
+  const panel = get(prefix + "Reactions").querySelector(".reaction-buttons");
+  for (const emote of GameRules.emotes) {
+    const [emoji, label] = reactions[emote];
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = emoji;
+    button.dataset.ariaLabel = label;
+    button.onclick = async () => {
+      const currentMatch = match;
+      for (const choice of panel.children) choice.disabled = true;
+      const sent = await Online.action("emote", { emote });
+      setTimeout(() => {
+        if (match === currentMatch) for (const choice of panel.children) choice.disabled = false;
+      }, sent ? 1200 : 0);
+    };
+    panel.append(button);
+  }
   const zone = get(prefix + "Slot").closest(".slot");
   const acceptsDrag = () => ownsTurn() && playerPrefix(match.currentPlayer) === prefix && activeDrag?.session === match;
   zone.ondragover = event => {
