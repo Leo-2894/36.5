@@ -509,9 +509,19 @@ function renderPlayer(player) {
       item.classList.add(isBuff(status.name) ? "benefit" : "penalty");
       const title = document.createElement("strong");
       setText(title, (isBuff(status.name) ? "＋ " : "− ") + label + "턴");
+      let heading = title;
+      if (status.name === "몸살") {
+        item.classList.add("status-fever");
+        heading = document.createElement("div");
+        heading.className = "status-fever-heading";
+        const warning = document.createElement("span");
+        warning.className = "status-fever-warning";
+        setText(warning, "피해 주의");
+        heading.append(title, warning);
+      }
       const effect = document.createElement("small");
       setText(effect, statusEffects[status.name] ?? status.name);
-      item.append(title, effect);
+      item.append(heading, effect);
       return item;
     }));
   }
@@ -964,7 +974,12 @@ function showStatusEffect(player, statusName, kind="") {
   const pop = document.createElement("div");
   const effectKind = kind || (isBuff(statusName) ? "buff" : isDebuff(statusName) ? "debuff" : "special");
   pop.className = `effect-pop ${effectKind}`;
-  setText(pop, `${effectKind === "buff" ? "BUFF" : effectKind === "debuff" ? "DEBUFF" : "EFFECT"} · ${statusName}`);
+  if (statusName === "몸살" && effectKind === "debuff") {
+    pop.classList.add("fever-warning");
+    setText(pop, "몸살 · 피해 주의");
+  } else {
+    setText(pop, `${effectKind === "buff" ? "BUFF" : effectKind === "debuff" ? "DEBUFF" : "EFFECT"} · ${statusName}`);
+  }
   panel.appendChild(pop);
   setTimeout(() => pop.remove(), 1300);
 }

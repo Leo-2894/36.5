@@ -547,6 +547,8 @@ for (const [ko, en, ja] of [
   ["남은 행동","Moves left","残り行動数"],
   ["받는 체온 피해 40% 감소","Take 40% less temperature damage","体温ダメージが40%減少"],
   ["받는 체온 피해 25% 증가","Take 25% more temperature damage","体温ダメージが25%増加"],
+  ["몸살 · 피해 주의","Fever · Damage warning","発熱・ダメージ注意"],
+  ["피해 주의","Damage warning","ダメージ注意"],
   ["받는 피해 50% 증가 · 회복량 25% 감소","Take 50% more damage and recover 25% less","被ダメージ50%増加・回復量25%減少"],
   ["회복량 40% 감소","Recover 40% less","回復量が40%減少"],
   ["내 차례 시작 시 +1°C","+1°C at the start of your turn","自分の手番開始時に+1°C"],
