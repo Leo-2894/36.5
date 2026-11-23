@@ -286,8 +286,7 @@ function resetMatch() {
   clearTimeout(endingTimer);
   clearTimeout(flashTimer);
   get("stormNotice").hidden = true;
-  get("snow").classList.remove("active");
-  get("snow").style.animationDelay = "";
+  Snowfall.update(false);
   BattleEffects.clear();
   queuedSwaps.clear();
   document.querySelectorAll(".preview-swap").forEach(effect => effect.remove());
@@ -382,16 +381,16 @@ function receiveOnlineState(state, events, requestMs, restoring) {
     pending: player.pending && { index: player.pending.index, card: card(player.pending.card) },
     nextCard: card(player.preview),
   }));
-  const snow = get("snow");
+  let stormElapsedMs = 0;
   if (state.storm && !match.storm && state.remainingMs !== null) {
     const phaseLeft = Math.max(0, state.remainingMs - requestMs / 2);
     const stormLeft = phaseLeft + (state.storm === "approaching" ? GameRules.stormPhaseMs("active") : 0);
-    snow.style.animationDelay = -Math.max(0, SETTINGS.stormDuration - stormLeft) + "ms";
+    stormElapsedMs = Math.max(0, SETTINGS.stormDuration - stormLeft);
   }
   Object.assign(match, {
     players, currentPlayer: players.find(player => player.name === state.current),
     current: state.current, starter: state.starter, turn: state.turn,
-    storm: state.storm, stormDamage: state.stormDamage,
+    storm: state.storm, stormDamage: state.stormDamage, stormElapsedMs,
     blizzardCount: state.blizzardCount, gameOver: state.phase === "finished",
   });
   onlineDeadline = state.storm || state.remainingMs === null ? null : performance.now() + Math.max(0, state.remainingMs - requestMs / 2);
@@ -776,9 +775,7 @@ function render() {
   if (!match) return;
   const storm = !match.gameOver && match.storm;
   get("stormNotice").hidden = !storm;
-  const snow = get("snow");
-  snow.classList.toggle("active", Boolean(storm));
-  if (!storm) snow.style.animationDelay = "";
+  Snowfall.update(Boolean(storm), match.stormElapsedMs);
   if (storm) {
     const approaching = storm === "approaching";
     const damage = match.stormDamage ?? Object.fromEntries(match.players.map(player => [player.name, GameRules.blizzardDamage(player)]));
