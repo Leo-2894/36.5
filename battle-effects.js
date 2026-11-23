@@ -64,9 +64,7 @@ const BattleEffects = (() => {
   // Draw the four rare impacts on a small pixel grid, then scale it with the HUD.
   function signature(id, panel) {
     const swap = id === "swap";
-    const preview = panel.querySelector(".mini-card");
-    const anchor = swap && preview.getBoundingClientRect().top < innerHeight ? preview : panel.querySelector(".pilot");
-    const [cx, cy] = center(anchor);
+    const [cx, cy] = center(panel.querySelector(".pilot"));
     const side = Math.min(240, innerWidth * .68, Math.max(152, panel.clientWidth * 1.12));
     const canvas = document.createElement("canvas");
     canvas.className = "signature";
