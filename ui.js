@@ -29,6 +29,7 @@ const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const slotLayouts = new WeakMap();
 const playerReadings = new WeakMap();
 const statusLayouts = new WeakMap();
+const queuedSwaps = new Map();
 let logNeedsScroll = false;
 const cardTones = { "체온 상승": "heat", "체온 저하": "ice", "복불복": "chance", "효과": "status", "자폭": "fracture", "스페셜": "rare" };
 
@@ -167,7 +168,8 @@ function handleEvent(event, live = true) {
       log(player.name + " · 40°C 과열!", "danger");
       break;
     case "swap":
-      log(event.exchanged ? "다음 카드 교체" : "교체할 다음 카드가 부족합니다.");
+      log(event.exchanged ? "다음 카드 교체" : "교체 가능한 카드가 없습니다.");
+      if (live && event.exchanged) queuedSwaps.set(player.name, event);
       break;
     case "waterGun":
       if (live) {
@@ -287,6 +289,8 @@ function resetMatch() {
   get("snow").classList.remove("active");
   get("snow").style.animationDelay = "";
   BattleEffects.clear();
+  queuedSwaps.clear();
+  document.querySelectorAll(".preview-swap").forEach(effect => effect.remove());
   get("screenFlash").className = "screen-flash";
   clearDragVisuals();
   clearResultEffects();
@@ -445,7 +449,7 @@ async function confirmOrPass(event) {
   if (match.currentPlayer.pending) {
     const resolved = match.confirm();
     render();
-    if (event.detail === 0 && !match.gameOver && !match.currentPlayer.isAI) {
+    if (resolved && event.detail === 0 && !match.gameOver && !match.currentPlayer.isAI) {
       get("hand").querySelector('[data-hand-index="' + resolved.index + '"]:not(.disabled)')?.focus();
     }
   } else {
@@ -519,7 +523,7 @@ function renderPlayer(player) {
   else {
     const card = match.preview(player);
     if (!card) setText(preview, "없음");
-    else if (preview.querySelector("img")?.dataset.card !== card.id) {
+    else if (preview.querySelector(":scope > img")?.dataset.card !== card.id) {
       const thumbnail = document.createElement("img");
       thumbnail.src = cardArtUrl(card);
       thumbnail.dataset.card = card.id;
@@ -538,8 +542,8 @@ function renderPlayer(player) {
 
 const statusEffects = {
   "후공 보너스": "첫 차례에 상대 체온을 낮추는 카드 피해 +2°C",
-  "보온": "받는 체온 피해 40% 감소", "옷 파손": "받는 체온 피해 25% 증가",
-  "몸살": "받는 피해 50% 증가 · 회복량 25% 감소", "동상": "회복량 40% 감소",
+  "보온": "받는 체온 피해 50% 감소", "옷 파손": "받는 체온 피해 25% 증가",
+  "몸살": "받는 피해 50% 증가 · 회복량 25% 감소", "동상": "회복량 50% 감소",
   "핫팩": "내 차례 시작 시 +1°C", "선풍기": "내 차례 시작 시 −1°C",
   "행동 제한": "한 차례에 행동 1회", "회복 제한": "회복 카드 사용 불가", "실명": "다음 카드 비공개",
 };
@@ -719,6 +723,41 @@ function renderSlot(player) {
   if (player.pending) slot.scrollTop = slot.scrollHeight;
 }
 
+function showPreviewSwap(player, event) {
+  const replacement = cardById.get(event.replacementCard);
+  if (!replacement || player.isAI || (onlineSide && player.name !== onlineSide) || hasStatus(player, "실명")) return;
+
+  const preview = get(playerPrefix(player) + "Next");
+  preview.querySelector(".preview-swap")?.remove();
+  const effect = document.createElement("div");
+  effect.className = "preview-swap";
+  effect.setAttribute("role", "status");
+  const art = document.createElement("span");
+  art.className = "preview-swap-art";
+  art.setAttribute("aria-hidden", "true");
+
+  const previous = cardById.get(event.previousCard);
+  for (const [card, phase] of [[previous, "outgoing"], [replacement, "incoming"]]) {
+    if (!card) continue;
+    const image = document.createElement("img");
+    image.className = "preview-swap-" + phase;
+    image.src = cardArtUrl(card);
+    image.alt = "";
+    art.append(image);
+  }
+
+  const detail = document.createElement("span");
+  detail.className = "preview-swap-caption";
+  const name = document.createElement("strong");
+  const destination = document.createElement("small");
+  setText(name, replacement.name);
+  setText(destination, "교체 완료 · 손패에 추가");
+  detail.append(name, destination);
+  effect.append(art, detail);
+  preview.append(effect);
+  setTimeout(() => effect.remove(), 1800);
+}
+
 function stormDamageText(damage) {
   return "P1 −" + damage.P1 + "°C · P2 −" + damage.P2 + "°C";
 }
@@ -750,7 +789,10 @@ function render() {
   for (const player of match.players) {
     renderPlayer(player);
     renderSlot(player);
+    const swap = queuedSwaps.get(player.name);
+    if (swap) showPreviewSwap(player, swap);
   }
+  queuedSwaps.clear();
 
   const player = onlineSide ? match.players.find(side => side.name === onlineSide) : match.currentPlayer;
   const active = ownsTurn();

@@ -224,6 +224,7 @@ class Rooms {
           usedThisTurn: player.usedThisTurn.map(card => card.id),
           ...(own && {
             hand: player.hand.map(card => card?.id ?? null),
+            swapAvailable: match.canSwap(player),
             pending: player.pending && { index: player.pending.index, card: player.pending.card.id },
             preview: hasStatus(player, "실명") ? null : match.preview(player)?.id ?? null,
           }),

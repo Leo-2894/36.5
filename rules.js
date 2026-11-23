@@ -18,12 +18,14 @@ const GameRules = (() => {
     maxBlizzardDamage: 5.5,
     blizzardMinAt: 26,
     blizzardMaxAt: 38,
-    insulation: 0.6,
-    tornClothes: 1.25,
-    feverDamage: 1.5,
-    feverHealing: 0.75,
-    frostbiteHealing: 0.6,
-    maxDamageMultiplier: 1.75,
+    insulation: 0.5,
+    tornClothes: 0.25,
+    feverDamage: 0.5,
+    feverHealing: 0.25,
+    frostbiteHealing: 0.5,
+    reducedHealing: 0.5,
+    maxDamageMultiplier: 1.5,
+    minHealingMultiplier: 0.5,
   });
 
   const cards = [
@@ -43,10 +45,10 @@ const GameRules = (() => {
     { id: "shaved-ice", name: "빙수", type: "체온 저하", target: "opponent", temp: -3 },
     { id: "cooling-spray", name: "쿨링 스프레이", type: "체온 저하", target: "opponent", temp: -3 },
     { id: "ice-pack", name: "아이스팩", type: "체온 저하", target: "opponent", temp: -3.5, copies: 2 },
-    { id: "half-and-half", name: "반반팩", type: "복불복", target: "opponent", range: [-6, 3], copies: 3, desc: "상대에게 -6~+3°C 무작위 적용" },
-    { id: "iced-americano", name: "아이스 아메리카노", type: "복불복", target: "opponent", range: [-5, 0], copies: 2, desc: "상대에게 -5~0°C 무작위 적용" },
-    { id: "water-gun", name: "러시안 물총", type: "복불복", target: "random", temp: -6, selfTemp: -4, copies: 2, desc: "50% 확률로 상대 -6°C 또는 자신 -4°C" },
-    { id: "hot-air-blower", name: "열풍기", type: "복불복", target: "self", range: [0, 5], status: "옷 파손", turns: 2, chance: 0.1, copies: 2, desc: "자신에게 0~+5°C, 10% 확률로 옷 파손 2턴" },
+    { id: "half-and-half", name: "반반팩", type: "복불복", target: "opponent", outcomes: [-4, -2, 1, 3], copies: 3, desc: "상대 체온 -4, -2, +1, +3°C 중 하나 (각 25%)" },
+    { id: "iced-americano", name: "아이스 아메리카노", type: "복불복", target: "opponent", outcomes: [-3, -2, -1, 0], copies: 2, desc: "상대 체온 -3, -2, -1, 0°C 중 하나 (각 25%)" },
+    { id: "water-gun", name: "러시안 물총", type: "복불복", target: "random", temp: -5, copies: 2, desc: "자신과 상대 중 한 명의 체온 -5°C (각 50%, 후공 보너스 제외)" },
+    { id: "hot-air-blower", name: "열풍기", type: "복불복", target: "self", outcomes: [0, 1, 2, 4], status: "옷 파손", turns: 2, chance: 0.25, copies: 2, desc: "자신 체온 0, +1, +2, +4°C 중 하나 (각 25%) · 옷 파손 2턴 (25%)" },
     { id: "ice-bottle", name: "얼음 유리병", type: "자폭", target: "both", temp: -2, copies: 2, desc: "양쪽 체온 -2°C" },
     { id: "ice-bucket", name: "아이스 버킷", type: "자폭", target: "both", status: "동상", turns: 2, selfTurns: 1, copies: 2, desc: "자신에게 동상 1턴, 상대에게 동상 2턴" },
     { id: "heat-pack", name: "핫팩", type: "효과", target: "self", status: "핫팩", periodic: 1, turns: 3, copies: 2, desc: "다음 내 차례부터 3회, 차례 시작 시 +1°C" },
@@ -55,7 +57,7 @@ const GameRules = (() => {
     { id: "electric-fan", name: "선풍기", type: "효과", target: "opponent", status: "선풍기", periodic: -1, turns: 3, copies: 2, desc: "다음 상대 차례부터 3회, 차례 시작 시 -1°C" },
     { id: "frostbite-patch", name: "파스", type: "효과", target: "opponent", status: "동상", turns: 2, desc: "상대에게 동상 2턴" },
     { id: "clothing-damage", name: "옷 파손 아이템", type: "효과", target: "opponent", status: "옷 파손", turns: 2, desc: "상대에게 옷 파손 2턴" },
-    { id: "swap", name: "교체 카드", type: "스페셜", target: "self", free: true, copies: 1, desc: "다음 카드 후보를 덱 뒤로 보내고 다른 카드를 뽑습니다. 행동 횟수 무료" },
+    { id: "swap", name: "교체 카드", type: "스페셜", target: "self", free: true, copies: 1, desc: "다음 카드 후보를 덱 뒤로 보내고 행동 소모 없이 다시 뽑습니다. 자폭·복불복·교체 카드와 즉시 회복량이 1.5°C 이하이거나 과열을 일으키거나 현재 사용할 수 없는 카드는 제외합니다." },
     { id: "turn-control", name: "상대 턴 통제 카드", type: "스페셜", target: "opponent", status: "행동 제한", turns: 1, copies: 1, desc: "상대의 다음 차례 행동 횟수 2회 → 1회" },
     { id: "recovery-lock", name: "회복 제한 카드", type: "스페셜", target: "opponent", status: "회복 제한", turns: 1, copies: 1, desc: "상대의 다음 차례에 회복 카드 사용 불가" },
     { id: "fever", name: "강화 디버프 카드", type: "스페셜", target: "opponent", status: "몸살", turns: 1, copies: 1, desc: "상대에게 몸살 1턴" },
@@ -63,9 +65,13 @@ const GameRules = (() => {
     copies: 3,
     desc: card.target === "self" ? "자신 체온 +" + card.temp + "°C" : "상대 체온 " + card.temp + "°C",
     ...card,
-    range: card.range && Object.freeze(card.range),
+    outcomes: card.outcomes && Object.freeze(card.outcomes),
   }));
   const deckTemplate = cards.flatMap(card => Array(card.copies).fill(card));
+  const reducedWaterGunDeck = [...deckTemplate];
+  // Roll once for the match so both players always have the same card pool.
+  reducedWaterGunDeck[deckTemplate.findIndex(card => card.id === "water-gun")] =
+    cards.find(card => card.id === "iced-americano");
   const debuffs = new Set(["옷 파손", "동상", "몸살", "실명", "행동 제한", "회복 제한", "선풍기"]);
   const buffs = new Set(["보온", "핫팩", "후공 보너스"]);
 
@@ -73,7 +79,7 @@ const GameRules = (() => {
   const isBuff = name => buffs.has(name);
   const hasStatus = (player, name) => player.statuses.some(status => status.name === name);
   const maxActions = player => hasStatus(player, "행동 제한") ? 1 : SETTINGS.actions;
-  const heals = card => card.target === "self" && (card.temp > 0 || card.range?.[1] > 0 || card.periodic > 0);
+  const heals = card => card.target === "self" && (card.temp > 0 || card.outcomes?.some(amount => amount > 0) || card.periodic > 0);
   const alwaysUsable = card => card && !heals(card) && !card.removeDebuff;
   const half = amount => Math.sign(amount) * Math.round(Math.abs(amount) * 2) / 2;
   const stormPhaseMs = phase => phase === "approaching" ? SETTINGS.stormImpactDelay : SETTINGS.stormDuration - SETTINGS.stormImpactDelay;
@@ -93,11 +99,15 @@ const GameRules = (() => {
     if (card.removeDebuff && !player.statuses.some(status => isDebuff(status.name))) {
       return "제거할 디버프가 없어 사용할 수 없습니다.";
     }
+    if (card.id === "swap" && (player.swapAvailable === false ||
+      (player.deck && swapCandidates(player, player.hand.indexOf(card)).replacement === undefined))) {
+      return "조건에 맞는 교체 카드가 없습니다.";
+    }
     if (!card.free && player.actionsUsed >= maxActions(player)) return "이번 차례의 행동 횟수를 모두 사용했습니다.";
     return "";
   }
 
-  function drawCandidate(player, slot, excludeId) {
+  function drawCandidate(player, slot, eligible) {
     const names = new Set();
     let hasUsableCard = false;
     for (let index = 0; index < player.hand.length; index++) {
@@ -113,7 +123,7 @@ const GameRules = (() => {
     let priority = 4;
     for (let index = 0; index < player.deck.length; index++) {
       const card = player.deck[index];
-      if (card.id === excludeId) continue;
+      if (eligible && !eligible(card)) continue;
       const rank = Number(names.has(card.id)) + (hasUsableCard || alwaysUsable(card) ? 0 : 2);
       if (rank === 0) return index;
       if (rank < priority) {
@@ -122,6 +132,21 @@ const GameRules = (() => {
       }
     }
     return best;
+  }
+
+  function swapCandidates(player, slot) {
+    const previous = drawCandidate(player, slot);
+    if (previous === undefined) return { previous, replacement: undefined };
+    const skipped = player.deck[previous];
+    const replacement = drawCandidate(player, slot, card => {
+      if (card.id === skipped.id || card.id === "swap" || card.type === "자폭" || card.type === "복불복") return false;
+      if (card.target === "self" && card.temp > 0) {
+        const gain = temperatureDelta(player, card.temp);
+        if (gain <= 1.5 || player.temp + gain >= SETTINGS.overheatTemp) return false;
+      }
+      return !legalCard(player, card);
+    });
+    return { previous, replacement };
   }
 
   function expireStatuses(player) {
@@ -134,15 +159,16 @@ const GameRules = (() => {
   function temperatureDelta(player, amount) {
     let factor = 1;
     if (amount < 0) {
-      if (hasStatus(player, "보온")) factor *= SETTINGS.insulation;
-      if (hasStatus(player, "옷 파손")) factor *= SETTINGS.tornClothes;
-      if (hasStatus(player, "몸살")) factor *= SETTINGS.feverDamage;
+      if (hasStatus(player, "보온")) factor -= SETTINGS.insulation;
+      if (hasStatus(player, "옷 파손")) factor += SETTINGS.tornClothes;
+      if (hasStatus(player, "몸살")) factor += SETTINGS.feverDamage;
       factor = Math.min(factor, SETTINGS.maxDamageMultiplier);
     }
     if (amount > 0) {
-      if (hasStatus(player, "동상")) factor *= SETTINGS.frostbiteHealing;
-      if (hasStatus(player, "몸살")) factor *= SETTINGS.feverHealing;
-      if (player.temp >= SETTINGS.reducedHealingTemp) factor *= 0.5;
+      if (hasStatus(player, "동상")) factor -= SETTINGS.frostbiteHealing;
+      if (hasStatus(player, "몸살")) factor -= SETTINGS.feverHealing;
+      if (player.temp >= SETTINGS.reducedHealingTemp) factor -= SETTINGS.reducedHealing;
+      factor = Math.max(factor, SETTINGS.minHealingMultiplier);
     }
     return half(amount * factor);
   }
@@ -169,10 +195,11 @@ const GameRules = (() => {
       this.random = random;
       this.onEvent = onEvent;
       this.starter = starter ?? (random() < 0.5 ? "P1" : "P2");
+      const deck = random() < 0.25 ? reducedWaterGunDeck : deckTemplate;
       this.players = ["P1", "P2"].map(name => ({
         name, isAI: name === aiPlayer,
         temp: SETTINGS.startTemp,
-        deck: shuffle(deckTemplate, random),
+        deck: shuffle(deck, random),
         discard: [], hand: Array(SETTINGS.handSize).fill(null), statuses: [],
         turnsTaken: 0, actionsUsed: 0, usedThisTurn: [], pending: null,
       }));
@@ -252,27 +279,23 @@ const GameRules = (() => {
       }
     }
 
-    drawInto(player, slot, swap = false) {
+    drawInto(player, slot, swap = null) {
       this.recycle(player);
-      const index = drawCandidate(player, slot);
-
-      if (swap && index !== undefined) {
-        const previous = player.deck[index];
-        const replacement = drawCandidate(player, slot, previous.id);
-        if (replacement !== undefined) {
-          const [card] = player.deck.splice(replacement, 1);
-          const adjusted = replacement < index ? index - 1 : index;
-          player.deck.push(player.deck.splice(adjusted, 1)[0]);
-          player.hand[slot] = card;
-          this.emit("swap", { player, exchanged: true });
-          return card;
-        }
-      }
-
-      if (swap) this.emit("swap", { player, exchanged: false });
+      const index = swap?.replacement ?? drawCandidate(player, slot);
       const card = index === undefined ? null : player.deck.splice(index, 1)[0];
       player.hand[slot] = card;
+      if (swap) {
+        const movedIndex = index < swap.previous ? swap.previous - 1 : swap.previous;
+        const [previous] = player.deck.splice(movedIndex, 1);
+        player.deck.push(previous);
+        this.emit("swap", { player, exchanged: true, previousCard: previous.id, replacementCard: card.id });
+      }
       return card;
+    }
+
+    canSwap(player) {
+      const slot = player.hand.findIndex(card => card?.id === "swap");
+      return slot !== -1 && swapCandidates(player, slot).replacement !== undefined;
     }
 
     preview(player) {
@@ -305,13 +328,15 @@ const GameRules = (() => {
       const player = this.currentPlayer;
       if (this.gameOver || !player.pending) return null;
       const { card, index } = player.pending;
+      const swap = card.id === "swap" ? swapCandidates(player, index) : null;
+      if (swap && swap.replacement === undefined) return null;
       player.pending = null;
       player.hand[index] = null;
       player.usedThisTurn.push(card);
       if (!card.free) player.actionsUsed++;
       this.emit("card", { player, card });
       this.applyCard(player, card);
-      const drawn = this.drawInto(player, index, card.id === "swap");
+      const drawn = this.drawInto(player, index, swap);
       player.discard.push(card);
       this.recycle(player);
       if (drawn) this.emit("draw", { player, card: drawn, index });
@@ -376,13 +401,13 @@ const GameRules = (() => {
       if (card.target === "random") {
         const target = this.random() < 0.5 ? opponent : user;
         this.emit("waterGun", { player: target, caster: user.name });
-        this.changeTemp(target, cardTemperature(user, target, target === opponent ? card.temp : card.selfTemp), card.name);
+        this.changeTemp(target, card.temp, card.name);
         return;
       }
 
       const targets = card.target === "both" ? this.players : [card.target === "self" ? user : opponent];
-      const amount = card.range
-        ? card.range[0] + Math.floor(this.random() * (card.range[1] - card.range[0] + 1))
+      const amount = card.outcomes
+        ? card.outcomes[Math.floor(this.random() * card.outcomes.length)]
         : card.temp;
 
       for (const player of targets) {
@@ -446,7 +471,7 @@ const GameRules = (() => {
     const urgent = player.temp <= 31 ? 1.65 : player.temp <= 34 ? 1.15 : 0.72;
 
     function scoreTemperature(target, amount) {
-      const delta = temperatureDelta(target, cardTemperature(player, target, amount));
+      const delta = temperatureDelta(target, amount);
       const next = target.temp + delta;
       if (next <= SETTINGS.lossTemp) return target === player ? -100 : 105;
       if (target === opponent) return -delta * (opponent.temp <= 31 ? 4.2 : 2.65);
@@ -457,7 +482,7 @@ const GameRules = (() => {
     }
 
     if (card.free) return 8;
-    if (card.target === "random") return (scoreTemperature(player, card.selfTemp) + scoreTemperature(opponent, card.temp)) / 2;
+    if (card.target === "random") return (scoreTemperature(player, card.temp) + scoreTemperature(opponent, card.temp)) / 2;
     if (card.id === "ice-bottle") {
       const selfAfter = player.temp + temperatureDelta(player, card.temp);
       const rivalAfter = opponent.temp + temperatureDelta(opponent, cardTemperature(player, opponent, card.temp));
@@ -474,12 +499,12 @@ const GameRules = (() => {
     const targets = card.target === "both" ? match.players : [card.target === "self" ? player : opponent];
     let score = 0;
     for (const target of targets) {
-      if (card.range) {
-        for (let amount = card.range[0]; amount <= card.range[1]; amount++) {
-          score += scoreTemperature(target, amount) / (card.range[1] - card.range[0] + 1);
+      if (card.outcomes) {
+        for (const amount of card.outcomes) {
+          score += scoreTemperature(target, cardTemperature(player, target, amount)) / card.outcomes.length;
         }
       } else if (card.temp !== undefined) {
-        score += scoreTemperature(target, card.temp);
+        score += scoreTemperature(target, cardTemperature(player, target, card.temp));
       }
       if (card.status) {
         const values = {
@@ -505,14 +530,14 @@ const GameRules = (() => {
 
   function blizzardLossRisk(match, player, card) {
     // Preview the same effects as the real turn without drawing or advancing RNG.
-    const count = card?.target === "random" ? 2 : card?.range ? card.range[1] - card.range[0] + 1 : 1;
+    const count = card?.target === "random" ? 2 : card?.outcomes?.length ?? 1;
     const statusOptions = card?.chance === undefined ? [[0.5, 1]] :
       [[0, card.chance], [1, 1 - card.chance]];
     let risk = 0;
     for (let outcome = 0; outcome < count; outcome++) {
       for (const [statusRoll, weight] of statusOptions) {
         const roll = (outcome + 0.5) / count;
-        let needsTemperatureRoll = Boolean(card?.range || card?.target === "random");
+        let needsTemperatureRoll = Boolean(card?.outcomes || card?.target === "random");
         const preview = Object.assign(Object.create(Match.prototype), {
           players: match.players.map(side => ({
             ...side, statuses: side.statuses.map(status => ({ ...status })),
@@ -556,7 +581,7 @@ const GameRules = (() => {
       (match.turn + 1) % SETTINGS.blizzardInterval === 0;
     const finalAction = player.actionsUsed + 1 >= maxActions(player);
     const selected = player.hand[best];
-    const selfDamage = selected?.target === "both" ? selected.temp ?? 0 : selected?.selfTemp ?? 0;
+    const selfDamage = selected?.target === "both" || selected?.target === "random" ? selected.temp ?? 0 : 0;
     const maxSelfDamage = half(-selfDamage * SETTINGS.maxDamageMultiplier);
     if (!blizzardNext || (best !== -1 && (!finalAction || player.hand[best].free)) ||
         player.temp - maxSelfDamage - SETTINGS.maxBlizzardDamage > SETTINGS.lossTemp) return best;

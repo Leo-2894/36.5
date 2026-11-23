@@ -4513,3 +4513,74 @@ body.is-dragging-card .field .slot.drop-ready {
   #snow.active {display:block!important;animation:none;opacity:.35}
   #snow.active i {display:none}
 }
+
+/* The swap receipt shows the card entering the hand over the normal preview. */
+.preview .mini-card { position: relative; }
+.preview-swap {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: clamp(29px, 3.4vw, 48px) minmax(0, 1fr);
+  gap: 7px;
+  align-items: center;
+  overflow: hidden;
+  padding: 4px 7px;
+  border: 1px solid #8ee5d0;
+  border-radius: inherit;
+  color: #eafff6;
+  background: linear-gradient(115deg, #183f42, #142536 74%);
+  box-shadow: inset 0 0 12px #69dfc329, 0 0 12px #69dfc34a;
+  pointer-events: none;
+  animation: preview-swap-panel 1.8s ease both;
+}
+.preview-swap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(112deg, transparent 38%, #b6fff578 50%, transparent 63%);
+  transform: translateX(-110%);
+  animation: preview-swap-glint .54s .23s ease-out forwards;
+}
+.preview-swap-art {
+  position: relative;
+  height: 100%;
+  align-self: center;
+}
+.preview-swap-art img {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  max-height: 100%;
+}
+.preview-swap-outgoing { animation: preview-card-out .34s ease-in both; }
+.preview-swap-incoming { animation: preview-card-in .48s .19s cubic-bezier(.12,.78,.35,1.28) both; }
+.preview-swap-caption {
+  display: grid;
+  gap: 2px;
+  position: relative;
+  z-index: 1;
+  text-align: start;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  animation: preview-swap-caption .38s .35s ease-out both;
+}
+.preview-swap-caption small { color: #a2f1d8; font-size: .7em; }
+@keyframes preview-swap-panel { 0%, 100% { opacity: 0; } 9%, 85% { opacity: 1; } }
+@keyframes preview-card-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translate(-55%, -21%) rotate(-24deg) scale(.7); }
+}
+@keyframes preview-card-in {
+  from { opacity: 0; transform: translate(85%, -18%) rotate(24deg) scale(.75); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes preview-swap-glint { to { transform: translateX(110%); } }
+@keyframes preview-swap-caption {
+  from { opacity: 0; transform: translateX(5px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .preview-swap, .preview-swap::after, .preview-swap-art img, .preview-swap-caption { animation: none; }
+  .preview-swap-outgoing, .preview-swap::after { display: none; }
+}
