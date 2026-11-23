@@ -212,6 +212,7 @@ class Rooms {
       phase: match.gameOver ? "finished" : "playing",
       turn: match.turn, blizzardCount: match.blizzardCount, current: match.current,
       storm: match.gameOver ? null : match.storm,
+      stormDamage: match.stormDamage,
       starter: match.starter, winner: match.winner,
       remainingMs: room.deadline === null ? null : Math.max(0, room.deadline - this.now()),
       players: match.players.map(player => {

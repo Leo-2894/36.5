@@ -191,7 +191,7 @@ function handleEvent(event, live = true) {
       if (live) playSound("blizzard.mp3", 0.9);
       break;
     case "blizzard":
-      log("Blizzard #" + event.count + " · 기본 피해 -" + event.damage + "°C", "danger");
+      log("Blizzard #" + event.count + " · " + stormDamageText(event.damage), "danger");
       break;
     case "result": {
       const title = event.winner === "DRAW" ? "무승부" : event.winner + " 승리";
@@ -387,7 +387,7 @@ function receiveOnlineState(state, events, requestMs, restoring) {
   Object.assign(match, {
     players, currentPlayer: players.find(player => player.name === state.current),
     current: state.current, starter: state.starter, turn: state.turn,
-    storm: state.storm,
+    storm: state.storm, stormDamage: state.stormDamage,
     blizzardCount: state.blizzardCount, gameOver: state.phase === "finished",
   });
   onlineDeadline = state.storm || state.remainingMs === null ? null : performance.now() + Math.max(0, state.remainingMs - requestMs / 2);
@@ -537,6 +537,7 @@ function renderPlayer(player) {
 }
 
 const statusEffects = {
+  "후공 보너스": "첫 차례에 상대 체온을 낮추는 카드 피해 +2°C",
   "보온": "받는 체온 피해 40% 감소", "옷 파손": "받는 체온 피해 25% 증가",
   "몸살": "받는 피해 50% 증가 · 회복량 25% 감소", "동상": "회복량 40% 감소",
   "핫팩": "내 차례 시작 시 +1°C", "선풍기": "내 차례 시작 시 −1°C",
@@ -718,6 +719,10 @@ function renderSlot(player) {
   if (player.pending) slot.scrollTop = slot.scrollHeight;
 }
 
+function stormDamageText(damage) {
+  return "P1 −" + damage.P1 + "°C · P2 −" + damage.P2 + "°C";
+}
+
 function render() {
   if (!match) return;
   const storm = !match.gameOver && match.storm;
@@ -727,8 +732,8 @@ function render() {
   if (!storm) snow.style.animationDelay = "";
   if (storm) {
     const approaching = storm === "approaching";
-    const damage = GameRules.blizzardDamage(match.blizzardCount + Number(approaching));
-    setText(get("stormText"), (approaching ? "눈보라 접근 중 · 양쪽 기본 피해 −" : "눈보라 피해 적용 · 양쪽 기본 피해 −") + damage + "°C");
+    const damage = match.stormDamage ?? Object.fromEntries(match.players.map(player => [player.name, GameRules.blizzardDamage(player)]));
+    setText(get("stormText"), (approaching ? "예상 피해" : "적용 피해") + " · " + stormDamageText(damage));
   }
   const step = match.turn % SETTINGS.blizzardInterval;
   const gauge = get("blizzardGauge");
@@ -738,7 +743,7 @@ function render() {
   const forecast = !match.gameOver && !storm && step === SETTINGS.blizzardInterval - 1;
   gauge.classList.toggle("forecast", forecast);
   setText(gauge.querySelector(".blizzard-sub"), forecast
-    ? "다음 턴 시작 시 눈보라 · 양쪽 기본 피해 −" + GameRules.blizzardDamage(match.blizzardCount + 1) + "°C"
+    ? "다음 턴 시작 시 눈보라 · 체온에 따라 −1.5~−5.5°C"
     : match.blizzardCount + "회 발동");
   setText(get("turnInfo"), "인게임 턴 " + match.turn + " · " + match.starter + " 선공");
 

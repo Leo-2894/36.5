@@ -54,7 +54,7 @@ test('both players start with the same 80-card pool and four distinct cards', ()
   assert.equal(card('clothing-damage').status, '옷 파손');
   assert.equal(cards.filter(item => item.type === '체온 상승').reduce((total, item) => total + item.copies, 0), 24);
   for (const player of match.players) {
-    assert.equal(player.temp, player.name === match.starter ? 36.5 : 38);
+    assert.equal(player.temp, 36.5);
     assert.equal(player.deck.length, 76);
     assert.equal(new Set(player.hand.map(item => item.id)).size, 4);
   }
@@ -70,12 +70,12 @@ test('placement is reversible, confirmation uses exactly one action and refills 
   const preview = match.preview(p1);
   assert.equal(match.finishTurn(), false);
   assert.equal(match.stage(2), false);
-  assert.equal(p2.temp, 38);
+  assert.equal(p2.temp, 36.5);
   assert.equal(match.cancel(), true);
   assert.equal(p1.hand[1].id, 'ice-pack');
   assert.equal(match.stage(1), true);
   match.confirm();
-  assert.equal(p2.temp, 34.5);
+  assert.equal(p2.temp, 33);
   assert.equal(p1.actionsUsed, 1);
   assert.equal(p1.hand[1], preview);
   assert.equal(p1.discard[0].id, 'ice-pack');
@@ -125,13 +125,14 @@ test('refreshing a status preserves its expiry or extends it without stacking', 
   const { match } = start();
   match.applyStatus(match.p2, '몸살', 2);
   match.applyStatus(match.p2, '몸살', 1);
-  assert.equal(match.p2.statuses.length, 1);
-  assert.equal(match.p2.statuses[0].remaining, 2);
+  const fever = () => match.p2.statuses.find(status => status.name === '몸살');
+  assert.equal(match.p2.statuses.filter(status => status.name === '몸살').length, 1);
+  assert.equal(fever().remaining, 2);
   match.finishTurn();
   match.finishTurn();
-  assert.equal(match.p2.statuses[0].remaining, 1);
+  assert.equal(fever().remaining, 1);
   match.applyStatus(match.p2, '몸살', 2);
-  assert.equal(match.p2.statuses[0].remaining, 2);
+  assert.equal(fever().remaining, 2);
 });
 
 test('recovery lock covers heating cards, the heater and Heat Pack, and cleansing removes the oldest debuff', () => {
@@ -151,7 +152,7 @@ test('expiry confirms the selected card, chooses a legal unselected card, or pas
   match.p1.hand = [card('mint-candy'), card('hot-air-blower'), card('hot-chocolate'), card('tylenol')];
   match.stage(0);
   match.timeOut();
-  assert.equal(match.p2.temp, 36.5);
+  assert.equal(match.p2.temp, 35);
   assert.equal(match.p1.pending, null);
   assert.equal(match.p1.actionsUsed, 1);
   match.p1.hand = [card('shaved-ice'), card('udon'), card('heat-pack'), card('hot-chocolate')];
@@ -190,15 +191,54 @@ test('refill avoids an all-conditional hand even when the only playable option i
   assert.equal(match.p1.hand[0].id, 'mint-candy');
 });
 
-test('blizzard cadence, cap, simultaneous result and symmetric rounding', () => {
+test('the second player gets extra direct cooling only on their opening turn', () => {
+  for (const starter of ['P1', 'P2']) {
+    const { match } = start(starter);
+    const first = match.currentPlayer;
+    const second = match.opponentOf(first);
+    play(match, 'mint-candy');
+    assert.equal(second.temp, 35);
+    match.finishTurn();
+    play(match, 'mint-candy');
+    assert.equal(first.temp, 33);
+    play(match, 'hot-chocolate');
+    assert.equal(second.temp, 36.5);
+    assert.equal(second.statuses.some(status => status.name === '후공 보너스'), false);
+    match.finishTurn();
+    play(match, 'mint-candy');
+    assert.equal(first.temp, 31.5);
+  }
+});
+
+test('gamble cards apply both ends of their advertised ranges', () => {
+  const effects = [
+    ['half-and-half', [0,-6], [0,3]],
+    ['iced-americano', [0,-5], [0,0]],
+    ['water-gun', [0,-6], [-4,0]],
+    ['hot-air-blower', [0,0], [5,0]],
+  ];
+  for (const [id, low, high] of effects) {
+    for (const [roll, expected] of [[0, low], [0.999, high]]) {
+      const { match } = start();
+      match.random = () => roll;
+      match.p1.temp = match.p2.temp = 30;
+      play(match, id);
+      assert.deepEqual(match.players.map(player => player.temp - 30), expected, id);
+    }
+  }
+});
+
+test('blizzard cadence, temperature scaling, caps and simultaneous result', () => {
   const { match, events } = start();
-  assert.deepEqual(Array.from({ length: 6 }, (_, i) => blizzardDamage(i + 1)), [2, 3, 4, 5, 5, 5]);
+  assert.deepEqual([25, 26, 32, 36.5, 38, 40].map(temp => blizzardDamage({ temp, statuses: [] })), [1.5, 1.5, 3.5, 5, 5.5, 5.5]);
+  assert.equal(blizzardDamage({ temp: 26, statuses: [{ name: '보온' }] }), 1.5);
+  assert.equal(blizzardDamage({ temp: 38, statuses: [{ name: '몸살' }] }), 5.5);
   match.applyStatus(match.p1, '옷 파손', 2);
   assert.equal(temperatureDelta(match.p1, -1), -1.5);
   match.applyStatus(match.p1, '몸살', 2);
   assert.equal(temperatureDelta(match.p1, -2), -3.5);
   match.p1.statuses = [];
-  match.p1.temp = match.p2.temp = 27;
+  match.p1.temp = match.p2.temp = 26.5;
   for (let turn = 0; turn < 6; turn++) match.finishTurn();
   assert.equal(match.turn, 3);
   assert.equal(match.blizzardCount, 1);
