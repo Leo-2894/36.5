@@ -20,6 +20,8 @@ const Online = (() => {
   };
   let session = null;
   let pollTimer = null;
+  let inviteTimer = null;
+  let inviteState = null;
   let busy = false;
   let selectedMode = hosted ? expectedMode : null;
   let serverModeMismatch = false;
@@ -103,11 +105,36 @@ const Online = (() => {
     get("copyInviteBtn").disabled = busy;
   }
 
+  function showInviteStatus(room) {
+    const status = get("inviteStatus");
+    status.hidden = !["preparing", "failed"].includes(inviteState);
+    if (inviteState === "failed") {
+      setText(status, "공개 주소를 열지 못했습니다. 돌아가서 방 만들기를 다시 눌러 주세요.");
+    } else if (inviteState === "preparing") {
+      setText(status, "방이 생성되었습니다. 공개 주소 연결이 확인되면 링크를 복사할 수 있습니다.");
+    }
+    clearTimeout(inviteTimer);
+    if (inviteState !== "preparing") return;
+    inviteTimer = setTimeout(async () => {
+      try {
+        const info = await request("/api/info");
+        if (session !== room || room.playing) return;
+        inviteOrigin = info.origin ?? inviteOrigin;
+        inviteState = info.inviteState ?? null;
+        inviteLink();
+      } catch {
+        if (session !== room || room.playing) return;
+      }
+      showInviteStatus(room);
+    }, 900);
+  }
+
   function showWaiting() {
     get("onlineChoices").hidden = true;
     get("waitingRoom").hidden = false;
     get("roomCode").textContent = session.code;
     inviteLink();
+    showInviteStatus(session);
     message("");
   }
 
@@ -135,6 +162,7 @@ const Online = (() => {
   function forget(room = session) {
     if (session !== room) return;
     clearTimeout(pollTimer);
+    clearTimeout(inviteTimer);
     room?.pollController?.abort();
     session = null;
     remember(null);
@@ -179,6 +207,7 @@ const Online = (() => {
     }
 
     if (dialog.open) dialog.close();
+    clearTimeout(inviteTimer);
     room.playing = true;
     room.finished = data.phase === "finished";
     if (room.finished) room.pollController?.abort();
@@ -288,7 +317,10 @@ const Online = (() => {
 
   get("onlineBtn").onclick = openLobby;
   get("chooseLanMode").onclick = () => selectMode("lan");
-  get("chooseInternetMode").onclick = () => selectMode("internet");
+  get("chooseInternetMode").onclick = () => {
+    selectMode("internet");
+    window.desktopOnline?.prepareInternet?.().catch(() => {});
+  };
   get("closeOnlineBtn").onclick = dismiss;
   dialog.oncancel = event => { event.preventDefault(); dismiss(); };
   window.addEventListener("pageshow", event => {
@@ -402,6 +434,7 @@ const Online = (() => {
     selectedMode = mode ?? expectedMode;
     setText(get("onlineTitle"), modeTitles[selectedMode] ?? "온라인 1대1");
     inviteOrigin = info.origin ?? info.addresses[0] ?? inviteOrigin;
+    inviteState = info.inviteState ?? null;
     inviteLink();
   }).catch(() => {}) : null;
   if (hosted) {
