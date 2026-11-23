@@ -528,6 +528,8 @@ for (const [ko, en, ja] of [
   ["코드 확인","Check code","コードを確認"],
   ["선택한 네트워크 모드와 주소가 다릅니다. 친구가 보낸 초대 링크와 모드를 확인하세요.","This address belongs to a different network mode. Check your friend’s invite link and the selected mode.","アドレスと選択したモードが一致しません。招待リンクとモードを確認してください。"],
   ["다른 네트워크 모드에서는 HTTPS 초대 링크를 사용하세요.","Use an HTTPS invite link for different networks.","別のネットワークではHTTPSの招待リンクを使用してください。"],
+  ["방이 생성되었습니다. 공개 주소 연결이 확인되면 링크를 복사할 수 있습니다.","Room created. You can copy the link once the public address is reachable.","ルームを作成しました。公開アドレスに接続できるとリンクをコピーできます。"],
+  ["공개 주소를 열지 못했습니다. 돌아가서 방 만들기를 다시 눌러 주세요.","Could not open the public address. Go back and select Create room again.","公開アドレスを開けませんでした。戻ってルーム作成をやり直してください。"],
   ["인터넷 초대 주소를 만드는 중입니다…","Creating an Internet invite…","インターネット招待リンクを作成しています…"],
   ["인터넷 초대 주소를 만들지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도하세요.","Could not create the Internet invite. Check your connection and try again.","インターネット招待リンクを作成できませんでした。接続を確認して再試行してください。"],
   ["인터넷 초대 연결이 종료되었습니다. 새 방을 만들어 주세요.","The Internet invite connection closed. Create a new room.","インターネット招待接続が終了しました。新しいルームを作成してください。"],

@@ -14,6 +14,7 @@ const { setTimeout: delay } = require("node:timers/promises");
 const providerVersion = "2026.11.1";
 const expectedHash = "341deda3db5ec498a0482254d6c38c0b7cf01a30c37bb5dd95d2216d08955e35";
 const binaryUrl = "https://github.com/cloudflare/cloudflared/releases/download/" + providerVersion + "/cloudflared-windows-amd64.exe";
+const binaryPreparations = new Map();
 const publicAddress = /https:\/\/[a-z0-9-]+\.trycloudflare\.com(?=[\s|]|$)/;
 
 async function resolvePublicAddress(hostname) {
@@ -94,6 +95,14 @@ async function prepareBinary(cacheDir) {
   }
 }
 
+function preparePublicTunnel(cacheDir) {
+  if (!binaryPreparations.has(cacheDir)) {
+    const preparation = prepareBinary(cacheDir).finally(() => binaryPreparations.delete(cacheDir));
+    binaryPreparations.set(cacheDir, preparation);
+  }
+  return binaryPreparations.get(cacheDir);
+}
+
 function waitForAddress(child) {
   return new Promise((resolve, reject) => {
     let buffer = "";
@@ -152,7 +161,7 @@ async function startTunnel({ executable, cacheDir, port, checkAddress, isOpen })
 }
 
 async function openPublicTunnel({ cacheDir, port, checkAddress, isOpen = () => true }) {
-  const executable = await prepareBinary(cacheDir);
+  const executable = await preparePublicTunnel(cacheDir);
   const options = { executable, cacheDir, port, checkAddress, isOpen };
   try {
     return await startTunnel(options);
@@ -162,4 +171,4 @@ async function openPublicTunnel({ cacheDir, port, checkAddress, isOpen = () => t
   }
 }
 
-module.exports = { openPublicTunnel, checkPublicOrigin, resolvePublicAddress };
+module.exports = { openPublicTunnel, preparePublicTunnel, checkPublicOrigin, resolvePublicAddress };

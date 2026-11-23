@@ -4,7 +4,7 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { createGameServer, defaultPort } = require("./server.cjs");
 const { isCardArtwork, readCustomCardArt } = require("./card-art.cjs");
-const { openPublicTunnel, checkPublicOrigin } = require("./tunnel.cjs");
+const { openPublicTunnel, preparePublicTunnel, checkPublicOrigin } = require("./tunnel.cjs");
 
 const gamePage = path.join(__dirname, "index.html");
 const hosts = new Map();
@@ -28,6 +28,41 @@ function stopHost(session) {
   session.server.close();
 }
 
+const inviteCache = () => path.join(app.getPath("userData"), "invite-bridge");
+
+async function publishInternetInvite(session, port) {
+  try {
+    const tunnel = await openPublicTunnel({
+      cacheDir: inviteCache(),
+      port,
+      isOpen: () => session.open,
+      checkAddress(origin) {
+        session.origin = origin;
+        return checkPublicOrigin(origin);
+      },
+    });
+    if (!session.open) {
+      tunnel.close();
+      return;
+    }
+    session.tunnel = tunnel;
+    session.inviteState = "ready";
+    tunnel.onExit(() => {
+      if (!session.open) return;
+      stopHost(session);
+      hosts.delete("internet");
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (win.webContents.getURL().startsWith("http://127.0.0.1:" + port + "/")) {
+          win.loadFile(gamePage, { query: { online: "tunnel-closed" } });
+        }
+      }
+    });
+  } catch {
+    session.origin = null;
+    if (session.open) session.inviteState = "failed";
+  }
+}
+
 async function hostGame(session, mode) {
   const internet = mode === "internet";
   const { server } = session;
@@ -39,39 +74,35 @@ async function hostGame(session, mode) {
     });
   });
   const port = server.address().port;
-  if (internet) {
-    session.tunnel = await openPublicTunnel({
-      cacheDir: path.join(app.getPath("userData"), "invite-bridge"),
-      port,
-      isOpen: () => session.open,
-      checkAddress(origin) {
-        session.origin = origin;
-        return checkPublicOrigin(origin);
-      },
-    });
-    session.tunnel.onExit(() => {
-      if (!session.open) return;
-      stopHost(session);
-      hosts.delete(mode);
-      for (const win of BrowserWindow.getAllWindows()) {
-        if (win.webContents.getURL().startsWith("http://127.0.0.1:" + port + "/")) {
-          win.loadFile(gamePage, { query: { online: "tunnel-closed" } });
-        }
-      }
-    });
-  }
+  if (internet) void publishInternetInvite(session, port);
   return "http://127.0.0.1:" + port;
 }
 
-ipcMain.handle("start-online-host", (event, mode) => {
+function requireDesktopGame(event) {
   const source = new URL(event.senderFrame.url);
   source.search = "";
   source.hash = "";
   if (source.href !== pathToFileURL(gamePage).href) throw new Error("Invalid host request");
+}
+
+ipcMain.handle("prepare-internet-host", async event => {
+  requireDesktopGame(event);
+  if (!hosts.has("internet")) await preparePublicTunnel(inviteCache());
+});
+
+ipcMain.handle("start-online-host", (event, mode) => {
+  requireDesktopGame(event);
   if (!["lan", "internet"].includes(mode)) throw new Error("Invalid host mode");
+  const previous = hosts.get(mode);
+  if (previous?.inviteState === "failed") {
+    stopHost(previous);
+    hosts.delete(mode);
+  }
   if (!hosts.has(mode)) {
-    const session = { open: true, origin: null };
-    session.server = createGameServer({ inviteOrigin: () => session.origin, customCardArt, mode });
+    const session = { open: true, origin: null, inviteState: mode === "internet" ? "preparing" : null };
+    session.server = createGameServer({
+      inviteOrigin: () => session.origin, inviteState: () => session.inviteState, customCardArt, mode,
+    });
     session.ready = hostGame(session, mode).catch(error => {
       stopHost(session);
       hosts.delete(mode);
