@@ -1,11 +1,25 @@
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, nativeImage, protocol } = require("electron");
+const fs = require("node:fs/promises");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { createGameServer, defaultPort } = require("./server.cjs");
+const { isCardArtwork, readCustomCardArt } = require("./card-art.cjs");
 const { openPublicTunnel, checkPublicOrigin } = require("./tunnel.cjs");
 
 const gamePage = path.join(__dirname, "index.html");
 const hosts = new Map();
+const cardArtDirectory = path.join(path.dirname(app.getPath("exe")), "card-art");
+const customCardArt = file => readCustomCardArt(cardArtDirectory, file, bytes => !nativeImage.createFromBuffer(bytes).isEmpty());
+
+async function serveDesktopCardArt(request) {
+  const url = new URL(request.url);
+  const file = url.pathname.slice(1);
+  if (request.method !== "GET" || url.host !== "local" || !isCardArtwork(file)) {
+    return new Response(null, { status: 404 });
+  }
+  const bytes = await customCardArt(file) ?? await fs.readFile(path.join(__dirname, "assets", "cards", file));
+  return new Response(bytes, { headers: { "Content-Type": "image/png", "Cache-Control": "no-store" } });
+}
 
 function stopHost(session) {
   session.open = false;
@@ -57,7 +71,7 @@ ipcMain.handle("start-online-host", (event, mode) => {
   if (!["lan", "internet"].includes(mode)) throw new Error("Invalid host mode");
   if (!hosts.has(mode)) {
     const session = { open: true, origin: null };
-    session.server = createGameServer({ inviteOrigin: () => session.origin });
+    session.server = createGameServer({ inviteOrigin: () => session.origin, customCardArt, mode });
     session.ready = hostGame(session, mode).catch(error => {
       stopHost(session);
       hosts.delete(mode);
@@ -92,6 +106,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  protocol.handle("card-art", serveDesktopCardArt);
   createWindow();
 
   app.on("activate", () => {

@@ -7,7 +7,7 @@ const path = require("node:path");
 const { pipeline } = require("node:stream");
 const { Rooms, RoomError } = require("./rooms.cjs");
 
-const publicFiles = new Set(["index.html", "game.css", "online.css", "rules.js", "messages.js", "ui.js", "online.js"]);
+const publicFiles = new Set(["index.html", "game.css", "online.css", "rules.js", "messages.js", "battle-effects.js", "ui.js", "online.js"]);
 const mediaTypes = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -68,14 +68,15 @@ function serveFile(request, response, pathname) {
     response.writeHead(200, {
       "Content-Type": mediaTypes[path.extname(file)],
       "Content-Length": info.size,
-      "Cache-Control": file.startsWith("assets/") ? "public, max-age=3600" : "no-cache",
+      "Cache-Control": file.startsWith("assets/cards/") ? "no-store" :
+        file.startsWith("assets/") ? "public, max-age=3600" : "no-cache",
     });
     if (request.method === "HEAD") response.end();
     else pipeline(fs.createReadStream(absolute), response, () => {});
   });
 }
 
-function createGameServer({ rooms = new Rooms(), inviteOrigin = process.env.INVITE_ORIGIN } = {}) {
+function createGameServer({ rooms = new Rooms(), inviteOrigin = process.env.INVITE_ORIGIN, customCardArt, mode } = {}) {
   const publishedOrigin = typeof inviteOrigin === "function" ? inviteOrigin : () => inviteOrigin ? new URL(inviteOrigin).origin : null;
   const server = http.createServer({ requestTimeout: 10_000, headersTimeout: 8_000 }, async (request, response) => {
     response.setHeader("X-Content-Type-Options", "nosniff");
@@ -87,8 +88,8 @@ function createGameServer({ rooms = new Rooms(), inviteOrigin = process.env.INVI
         const local = ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(socketAddress) &&
           /^(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i.test(request.headers.host ?? "");
         const port = server.address().port;
-        const addresses = local ? localAddresses().map(address => "http://" + address + ":" + port) : [];
-        json(response, 200, { origin: publishedOrigin(), addresses });
+        const addresses = local && mode !== "internet" ? localAddresses().map(address => "http://" + address + ":" + port) : [];
+        json(response, 200, { origin: publishedOrigin(), addresses, mode });
         return;
       }
       if (target.pathname === "/api/rooms" && method === "POST") {
@@ -101,6 +102,8 @@ function createGameServer({ rooms = new Rooms(), inviteOrigin = process.env.INVI
       if (route) {
         const [, code, operation] = route;
         const token = request.headers.authorization?.match(/^Bearer ([\w-]{32})$/)?.[1];
+        const cursor = Number(target.searchParams.get("event"));
+        const eventId = Number.isSafeInteger(cursor) && cursor > 0 ? cursor : 0;
         if (operation === "join" && method === "POST") {
           await readJson(request);
           json(response, 200, rooms.join(code));
@@ -108,14 +111,25 @@ function createGameServer({ rooms = new Rooms(), inviteOrigin = process.env.INVI
         }
         if (!operation && method === "GET") {
           const after = Number(target.searchParams.get("after"));
-          const state = rooms.read(code, token, after);
+          let state;
+          if (target.searchParams.get("wait") === "1") {
+            const controller = new AbortController();
+            const cancel = () => controller.abort();
+            response.once("close", cancel);
+            try {
+              state = await rooms.watch(code, token, after, eventId, controller.signal);
+            } finally {
+              response.off("close", cancel);
+            }
+            if (response.destroyed) return;
+          } else state = rooms.read(code, token, after, eventId);
           if (state) json(response, 200, state);
           else response.writeHead(204, { "Cache-Control": "no-store" }).end();
           return;
         }
         if (operation === "action" && method === "POST") {
           const command = await readJson(request);
-          json(response, 200, rooms.action(code, token, command));
+          json(response, 200, rooms.action(code, token, command, eventId));
           return;
         }
         if (operation === "leave" && method === "POST") {
@@ -126,8 +140,21 @@ function createGameServer({ rooms = new Rooms(), inviteOrigin = process.env.INVI
         }
         throw new RoomError(405, "INVALID_REQUEST");
       }
-      if (method === "GET" || method === "HEAD") serveFile(request, response, target.pathname);
-      else throw new RoomError(405, "INVALID_REQUEST");
+      if (method !== "GET" && method !== "HEAD") throw new RoomError(405, "INVALID_REQUEST");
+      const cardPath = /^\/assets\/cards\/([a-z0-9-]+\.png)$/.exec(target.pathname);
+      if (cardPath && customCardArt) {
+        const bytes = await customCardArt(cardPath[1]);
+        if (bytes) {
+          response.writeHead(200, {
+            "Content-Type": "image/png",
+            "Content-Length": bytes.length,
+            "Cache-Control": "no-store",
+          });
+          response.end(method === "HEAD" ? undefined : bytes);
+          return;
+        }
+      }
+      serveFile(request, response, target.pathname);
     } catch (error) {
       if (!(error instanceof RoomError)) console.error(error);
       if (!response.headersSent && !response.destroyed) {

@@ -33,6 +33,35 @@ function setUp(random = () => 0.9) {
   return { rooms, host, code, tick, read, action };
 }
 
+test("both clients observe the storm before the next action clock starts", () => {
+  const { rooms, code, host, tick, read, action } = setUp();
+  const guest = rooms.join(code);
+  for (let i = 0; i < 5; i++) action(i % 2 ? host : guest, "pass");
+  assert.equal(read(host).turn, 2);
+  assert.equal(read(host).storm, null);
+  const startingTemps = [36.5, 36.5];
+  assert.deepEqual(read(guest).players.map(player => player.temp), startingTemps);
+  action(host, "pass");
+  assert.equal(read(host).storm, "approaching");
+  assert.equal(read(guest).blizzardCount, 0);
+  assert.throws(() => action(guest, "pass"), { code: "MATCH_UNAVAILABLE" });
+  tick(1499);
+  assert.deepEqual(read(guest).players.map(player => player.temp), startingTemps);
+  tick(1);
+  assert.equal(read(guest).storm, "active");
+  assert.equal(read(host).blizzardCount, 1);
+  assert.deepEqual(read(host).stormDamage, { P1: 5, P2: 5 });
+  assert.deepEqual(read(host).players.map(player => player.temp), [31.5, 31.5]);
+  assert.throws(() => action(guest, "pass"), { code: "MATCH_UNAVAILABLE" });
+  tick(1499);
+  assert.equal(read(host).storm, "active");
+  tick(1);
+  assert.equal(read(guest).storm, null);
+  assert.equal(read(guest).remainingMs, 15000);
+  assert.equal(read(guest).stormDamage, null);
+  rooms.close();
+});
+
 test("one invitation seats two players and starts their shared match", () => {
   const { rooms, host, code, read } = setUp();
   assert.match(code, /^[2-9A-HJ-NP-Z]{6}$/);
@@ -45,6 +74,8 @@ test("one invitation seats two players and starts their shared match", () => {
   assert.equal(shared.phase, "playing");
   assert.equal(shared.current, "P2");
   assert.equal(shared.starter, guest.state.starter);
+  assert.deepEqual(shared.players[0].statuses, [{ name: "후공 보너스", remaining: 1 }]);
+  assert.deepEqual(shared.players[1].statuses, []);
   assert.equal(shared.version, guest.state.version);
   assert.equal(read(host, shared.version), null);
   assert.throws(() => rooms.join(code), { code: "ROOM_FULL" });
@@ -123,5 +154,46 @@ test("leaving a waiting room closes it and leaving a live game awards a forfeit 
   assert.equal(result.winner, "P1");
   assert.equal(result.remainingMs, null);
   assert.equal(result.events.at(-1).forfeited, "P2");
+});
+
+test("room watchers wake on updates, keep private events hidden and expire when idle", async () => {
+  const { rooms, host, code, read, action, tick } = setUp();
+  const signal = new AbortController().signal;
+  const waiting = rooms.watch(code, host.token, host.state.version, 0, signal);
+  const guest = rooms.join(code);
+  const initial = await waiting;
+  const cursor = initial.events.at(-1).id;
+  const watching = rooms.watch(code, host.token, initial.version, cursor, signal);
+  rooms.items.get(code).match.p2.hand[0] = cards.find(card => card.id === "ice-pack");
+  action(guest, "stage", { index: 0 });
+  const staged = await watching;
+  assert.deepEqual(staged.events, []);
+  assert.equal(Object.hasOwn(staged.players[1], "pending"), false);
+
+  const confirmed = rooms.watch(code, host.token, staged.version, cursor, signal);
+  action(guest, "confirm");
+  const update = await confirmed;
+  assert.equal(update.players[0].temp, 33);
+  assert.ok(update.events.some(event => event.card === "ice-pack"));
+  assert.ok(update.events.every(event => event.id > cursor && event.type !== "draw"));
+  assert.equal(read(host).version, update.version);
+
+  const idle = rooms.watch(code, host.token, update.version, cursor, signal);
+  assert.equal(await rooms.watch(code, host.token, update.version, cursor, signal), null);
+  tick(4500);
+  assert.equal(await idle, null);
+});
+
+test("leaving or canceling a long poll releases the room's listener", async () => {
+  const { rooms, host, code } = setUp();
+  const controller = new AbortController();
+  const watch = rooms.watch(code, host.token, host.state.version, 0, controller.signal);
+  controller.abort();
+  assert.equal(await watch, null);
+  assert.equal(rooms.items.get(code).listeners.size, 0);
+  const waiting = rooms.watch(code, host.token, host.state.version, 0, new AbortController().signal);
+  const dropped = assert.rejects(waiting, { code: "ROOM_MISSING" });
+  rooms.leave(code, host.token);
+  await dropped;
 });
 

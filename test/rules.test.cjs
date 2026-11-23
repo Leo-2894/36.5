@@ -18,14 +18,57 @@ function play(match, id) {
   return match.confirm();
 }
 
+test('AI saves its last action for recovery when the next blizzard would be fatal', () => {
+  const { match } = start();
+  match.turn = 2;
+  match.finishTurn();
+  match.p1.temp = 33;
+  match.p2.temp = 26.5;
+  match.p2.actionsUsed = 1;
+  match.p2.hand = ['ice-pack', 'roasted-chestnuts', 'mint-candy', 'tylenol'].map(card);
+  const best = chooseCard(match);
+  assert.equal(match.p2.hand[best].id, 'roasted-chestnuts');
+  assert.equal(match.p2.temp, 26.5);
+  assert.equal(match.blizzardCount, 0);
+  match.stage(best);
+  match.confirm();
+  assert.equal(match.p2.temp, 26);
+  assert.equal(match.gameOver, false);
+});
+
+test('AI still takes a guaranteed win before the blizzard', () => {
+  const { match } = start();
+  match.turn = 2;
+  match.finishTurn();
+  match.p1.temp = 27;
+  match.p2.temp = 26.5;
+  match.p2.actionsUsed = 1;
+  match.p2.hand = ['ice-pack', 'roasted-chestnuts', 'water-gun', 'hot-air-blower'].map(card);
+  assert.equal(chooseCard(match), 0);
+});
+
 test('both players start with the same 80-card pool and four distinct cards', () => {
   const { match } = start();
   assert.equal(cards.length, 32);
+  assert.equal(card('torn-coat'), undefined);
+  assert.equal(card('clothing-damage').status, '옷 파손');
   assert.equal(cards.filter(item => item.type === '체온 상승').reduce((total, item) => total + item.copies, 0), 24);
   for (const player of match.players) {
     assert.equal(player.temp, 36.5);
     assert.equal(player.deck.length, 76);
     assert.equal(new Set(player.hand.map(item => item.id)).size, 4);
+  }
+});
+
+test('the reduced water gun deck replaces the same one copy for both players', () => {
+  for (const [roll, waterGunCopies] of [[0.249, 1], [0.25, 2]]) {
+    const { match } = start('P1', () => roll);
+    for (const { deck, hand } of match.players) {
+      const pool = [...deck, ...hand];
+      assert.equal(pool.length, 80);
+      assert.equal(pool.filter(card => card.id === 'water-gun').length, waterGunCopies);
+      assert.equal(pool.filter(card => card.id === 'iced-americano').length, 4 - waterGunCopies);
+    }
   }
 });
 
@@ -83,17 +126,25 @@ test('Heat Pack and Electric Fan each trigger on three target turns', () => {
   }
 });
 
+test('Ice Bucket applies shorter frostbite to its user', () => {
+  const { match } = start();
+  play(match, 'ice-bucket');
+  assert.equal(match.p1.statuses.find(status => status.name === '동상').remaining, 1);
+  assert.equal(match.p2.statuses.find(status => status.name === '동상').remaining, 2);
+});
+
 test('refreshing a status preserves its expiry or extends it without stacking', () => {
   const { match } = start();
   match.applyStatus(match.p2, '몸살', 2);
   match.applyStatus(match.p2, '몸살', 1);
-  assert.equal(match.p2.statuses.length, 1);
-  assert.equal(match.p2.statuses[0].remaining, 2);
+  const fever = () => match.p2.statuses.find(status => status.name === '몸살');
+  assert.equal(match.p2.statuses.filter(status => status.name === '몸살').length, 1);
+  assert.equal(fever().remaining, 2);
   match.finishTurn();
   match.finishTurn();
-  assert.equal(match.p2.statuses[0].remaining, 1);
+  assert.equal(fever().remaining, 1);
   match.applyStatus(match.p2, '몸살', 2);
-  assert.equal(match.p2.statuses[0].remaining, 2);
+  assert.equal(fever().remaining, 2);
 });
 
 test('recovery lock covers heating cards, the heater and Heat Pack, and cleansing removes the oldest debuff', () => {
@@ -131,15 +182,34 @@ test('expiry confirms the selected card, chooses a legal unselected card, or pas
 });
 
 test('swap moves the actual draw candidate to the bottom, draws a different card, and costs no action', () => {
-  const { match } = start();
+  const { match, events } = start();
   match.p1.hand = [card('swap'), card('steamed-bun'), card('mint-candy'), card('heat-pack')];
-  match.p1.deck = [card('mint-candy'), card('ice-pack'), card('cooling-spray')];
+  match.p1.deck = ['mint-candy', 'ice-pack', 'ice-bottle', 'half-and-half', 'hot-chocolate', 'udon', 'tylenol', 'cooling-spray'].map(card);
+  match.p1.temp = 37.5;
+  assert.equal(match.canSwap(match.p1), true);
   assert.equal(match.stage(0), true);
   assert.equal(match.preview(match.p1).id, 'ice-pack');
   match.confirm();
   assert.equal(match.p1.hand[0].id, 'cooling-spray');
   assert.equal(match.p1.deck.at(-1).id, 'ice-pack');
   assert.equal(match.p1.actionsUsed, 0);
+  const event = events.find(item => item.type === 'swap');
+  assert.equal(event.previousCard, 'ice-pack');
+  assert.equal(event.replacementCard, 'cooling-spray');
+  assert.equal(match.preview(match.p1).id, 'ice-bottle');
+});
+
+test('swap stays in hand when the deck has no eligible alternative', () => {
+  const { match } = start();
+  match.p1.hand = [card('swap'), card('clothes'), card('mint-candy'), card('heat-pack')];
+  match.p1.deck = ['ice-pack', 'ice-pack', 'ice-bucket', 'hot-air-blower', 'roasted-chestnuts', 'cup-noodles'].map(card);
+  match.applyStatus(match.p1, '회복 제한', 1);
+  const deckBefore = [...match.p1.deck];
+  assert.equal(match.canSwap(match.p1), false);
+  assert.match(legalCard(match.p1, card('swap')), /조건에 맞는 교체 카드/);
+  assert.equal(match.stage(0), false);
+  assert.equal(match.p1.hand[0].id, 'swap');
+  assert.deepEqual(match.p1.deck, deckBefore);
 });
 
 test('refill avoids an all-conditional hand even when the only playable option is a duplicate', () => {
@@ -152,15 +222,81 @@ test('refill avoids an all-conditional hand even when the only playable option i
   assert.equal(match.p1.hand[0].id, 'mint-candy');
 });
 
-test('blizzard cadence, cap, simultaneous result and symmetric rounding', () => {
+test('the second player gets extra direct cooling only on their opening turn', () => {
+  for (const starter of ['P1', 'P2']) {
+    const { match } = start(starter);
+    const first = match.currentPlayer;
+    const second = match.opponentOf(first);
+    play(match, 'mint-candy');
+    assert.equal(second.temp, 35);
+    match.finishTurn();
+    play(match, 'mint-candy');
+    assert.equal(first.temp, 33);
+    play(match, 'hot-chocolate');
+    assert.equal(second.temp, 36.5);
+    assert.equal(second.statuses.some(status => status.name === '후공 보너스'), false);
+    match.finishTurn();
+    play(match, 'mint-candy');
+    assert.equal(first.temp, 31.5);
+  }
+});
+
+test('gamble cards use the advertised 25% outcome thresholds', () => {
+  const effects = [
+    ['half-and-half', [[0, -4], [0, -2], [0, 1], [0, 3]]],
+    ['iced-americano', [[0, -3], [0, -2], [0, -1], [0, 0]]],
+    ['hot-air-blower', [[0, 0], [1, 0], [2, 0], [4, 0]]],
+  ];
+  for (const [id, outcomes] of effects) {
+    for (const [index, expected] of outcomes.entries()) {
+      const { match } = start();
+      match.random = () => index / 4;
+      match.p1.temp = match.p2.temp = 30;
+      play(match, id);
+      assert.deepEqual(match.players.map(player => player.temp - 30), expected, id);
+      if (id === 'hot-air-blower') {
+        assert.equal(match.p1.statuses.some(status => status.name === '옷 파손'), index === 0);
+      }
+    }
+  }
+});
+
+test('water gun has a 50% chance to cool either target by the same amount', () => {
+  for (const [roll, expected] of [[0.499, [31.5, 36.5]], [0.5, [36.5, 31.5]]]) {
+    const { match } = start();
+    match.finishTurn();
+    match.random = () => roll;
+    play(match, 'water-gun');
+    assert.deepEqual(match.players.map(player => player.temp), expected);
+  }
+});
+
+test('temperature modifiers add within the 25% and 50% steps', () => {
+  const status = (...names) => names.map(name => ({ name }));
+  const cooling = (...names) => temperatureDelta({ statuses: status(...names) }, -4);
+  const warming = (temp, ...names) => temperatureDelta({ temp, statuses: status(...names) }, 4);
+
+  assert.equal(cooling('보온'), -2);
+  assert.equal(cooling('옷 파손'), -5);
+  assert.equal(cooling('보온', '옷 파손'), -3);
+  assert.equal(cooling('보온', '몸살'), -4);
+  assert.equal(cooling('옷 파손', '몸살'), -6);
+  assert.equal(warming(36.5, '몸살'), 3);
+  assert.equal(warming(36.5, '동상', '몸살'), 2);
+  assert.equal(warming(38.5, '동상', '몸살'), 2);
+});
+
+test('blizzard cadence, temperature scaling, caps and simultaneous result', () => {
   const { match, events } = start();
-  assert.deepEqual(Array.from({ length: 6 }, (_, i) => blizzardDamage(i + 1)), [2, 3, 4, 5, 5, 5]);
+  assert.deepEqual([25, 26, 32, 36.5, 38, 40].map(temp => blizzardDamage({ temp, statuses: [] })), [1.5, 1.5, 3.5, 5, 5.5, 5.5]);
+  assert.equal(blizzardDamage({ temp: 26, statuses: [{ name: '보온' }] }), 1.5);
+  assert.equal(blizzardDamage({ temp: 38, statuses: [{ name: '몸살' }] }), 5.5);
   match.applyStatus(match.p1, '옷 파손', 2);
   assert.equal(temperatureDelta(match.p1, -1), -1.5);
   match.applyStatus(match.p1, '몸살', 2);
-  assert.equal(temperatureDelta(match.p1, -2), -3.5);
+  assert.equal(temperatureDelta(match.p1, -2), -3);
   match.p1.statuses = [];
-  match.p1.temp = match.p2.temp = 27;
+  match.p1.temp = match.p2.temp = 26.5;
   for (let turn = 0; turn < 6; turn++) match.finishTurn();
   assert.equal(match.turn, 3);
   assert.equal(match.blizzardCount, 1);

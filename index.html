@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' card-art:; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'">
 <title>36.5</title>
 
   <link rel="stylesheet" href="game.css">
@@ -11,7 +11,10 @@
 </head>
 <body class="game-not-started">
 <div class="screen-flash" id="screenFlash"></div>
-<div class="snow" id="snow"></div>
+<div class="snow" id="snow" aria-hidden="true"></div>
+<div id="castTrail" aria-hidden="true"></div>
+<div id="battleWave" aria-hidden="true"></div>
+<aside id="stormNotice" role="status" hidden><strong>블리자드</strong><span id="stormText"></span></aside>
 
 <div class="start-menu" id="startMenu">
   <div class="main-menu-buttons">
@@ -33,17 +36,28 @@
       <span><img src="assets/lobby/ice-pack.png" alt=""></span>
     </div>
   </header>
+  <div id="onlineModes" class="lobby-modes" hidden>
+    <button id="chooseLanMode" type="button">
+      <strong>같은 네트워크</strong>
+      <span>같은 Wi-Fi나 공유기에 연결된 친구</span>
+    </button>
+    <button id="chooseInternetMode" type="button">
+      <strong>다른 네트워크</strong>
+      <span>다른 장소나 데이터 연결을 사용하는 친구</span>
+    </button>
+  </div>
   <div id="onlineDesktop" hidden>
-    <div id="desktopHostChoices" hidden>
-      <button id="hostOnDesktopBtn" class="lobby-primary">인터넷 초대방 만들기</button>
-      <p class="lobby-host-help">Cloudflare를 통해 임시 링크를 만듭니다. 첫 실행에는 구성 요소를 다운로드합니다.</p>
-      <button id="hostLanBtn">같은 네트워크에서 방 만들기</button>
-    </div>
+    <button id="hostModeBtn" class="lobby-primary" hidden>방 만들기</button>
+    <p id="internetHelp" class="lobby-host-help" hidden>인터넷 방을 만들면 Cloudflare 임시 초대 링크가 발급됩니다.</p>
     <form id="serverForm" class="lobby-form">
       <label for="serverAddress">친구가 보낸 서버 주소 또는 초대 링크</label>
       <div class="lobby-row">
-        <input id="serverAddress" type="text" inputmode="url" autocomplete="url" required placeholder="http://192.168.0.10:3650">
-        <button type="submit">접속</button>
+        <input id="serverAddress" type="text" inputmode="url" autocomplete="url" required>
+      </div>
+      <label for="serverCode">초대 코드</label>
+      <div class="lobby-row">
+        <input id="serverCode" type="text" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="6자리 코드">
+        <button type="submit">코드 확인</button>
       </div>
     </form>
   </div>
@@ -77,6 +91,7 @@
 
     <h2>1. 기본 목표</h2>
     <p>양 플레이어는 36.5°C에서 시작합니다. 상대의 체온을 25°C 이하로 만들면 승리합니다.</p>
+    <p>후공은 첫 차례에 카드로 상대 체온을 낮출 때 기본 피해가 2°C 증가합니다. 러시안 물총에는 후공 보너스가 적용되지 않습니다.</p>
     <p>양쪽이 동시에 25°C 이하가 되면 체온이 높은 쪽이 이기며, 같으면 무승부입니다.</p>
 
     <h2>2. 턴 진행</h2>
@@ -98,12 +113,12 @@
     <ul>
       <li>상태는 즉시 적용되고, 효과를 받은 쪽의 다음 차례부터 남은 횟수를 계산합니다. 지속 회복과 피해는 그 차례가 시작될 때 적용됩니다.</li>
       <li>38.5°C 이상에서는 체온 상승량이 절반이 됩니다. 40°C에 도달하면 39.5°C로 돌아가고 몸살과 실명에 2턴 동안 걸립니다.</li>
-      <li>보온은 체온 저하를 40% 줄이고, 옷 파손은 25% 늘립니다. 몸살은 체온 저하를 50% 늘리고 체온 상승을 25% 줄입니다. 동상은 체온 상승을 40% 줄입니다.</li>
-      <li>효과를 합친 체온 저하 배율의 상한은 1.75배입니다. 체온 변화는 0.5°C 단위로 반올림합니다.</li>
+      <li>보온은 체온 저하를 50% 줄이고, 옷 파손은 25% 늘립니다. 몸살은 체온 저하를 50% 늘리고 체온 상승을 25% 줄입니다. 동상은 체온 상승을 50% 줄입니다. 상태가 겹치면 체온 저하 증폭과 회복량 감소는 각각 최대 50%입니다.</li>
+      <li>상태별 증폭과 감소를 더한 다음, 체온 변화는 0.5°C 단위로 반올림합니다.</li>
     </ul>
 
     <h2>5. 눈보라</h2>
-    <p>눈보라는 3턴마다 발동합니다. 양쪽에 들어가는 기본 피해는 -2°C부터 발동할 때마다 1°C씩 증가해 최대 -5°C가 됩니다.</p>
+    <p>눈보라는 3턴마다 시작되고 1.5초 뒤 양쪽 체온을 낮춥니다. 체온이 높을수록 피해가 커지며, 상태 효과까지 적용한 피해는 1.5~5.5°C입니다.</p>
 
     <button class="back-button" id="backToMenuBtn">돌아가기</button>
   </div>
@@ -132,12 +147,13 @@
   <div class="game">
     <section class="panel player">
       <h2>P1 <span class="ai-badge" id="p1Badge">플레이어</span></h2>
+      <div class="pilot heat-pilot" aria-hidden="true"><i></i></div>
       <div class="temp" id="p1Temp">36.5°C</div>
       <div class="bar"><div class="bar-inner" id="p1Bar"></div></div>
+      <div class="thermal-scale"><span>25°</span><span>36.5°</span><span>40°</span></div>
       <div class="status-row" id="p1Status"></div>
-      <div class="deck-info">
-        <div>덱 <b id="p1Deck">0</b></div>
-        <div>버림 <b id="p1Discard">0</b></div>
+      <div class="turn-info">
+        <div><span>남은 행동</span><b id="p1Actions">–</b></div>
       </div>
       <div class="preview">
         <div class="preview-title">다음 카드</div>
@@ -177,9 +193,17 @@
           <h3 id="handTitle">P1 손패</h3>
           <span id="onlineTurnStatus" role="status" hidden></span>
         </div>
-        <div id="actionCount">0 / 2</div>
+        <div class="compact-actions" id="handActions" hidden></div>
       </div>
       <div class="cards" id="hand"></div>
+      <div class="card-details" id="cardDetails">
+        <div class="card-details-heading">
+          <strong id="detailName">카드 설명</strong>
+          <span id="detailType" hidden></span>
+          <span id="detailReason" hidden></span>
+        </div>
+        <div id="detailEffect">카드에 커서를 올리거나 Tab으로 설명을 확인하세요.</div>
+      </div>
 
       <div class="btns">
         <button id="endBtn">턴 종료</button>
@@ -193,12 +217,13 @@
 
     <section class="panel player">
       <h2>P2 <span class="ai-badge" id="p2Badge">AI</span></h2>
+      <div class="pilot cold-pilot" aria-hidden="true"><i></i></div>
       <div class="temp" id="p2Temp">36.5°C</div>
       <div class="bar"><div class="bar-inner" id="p2Bar"></div></div>
+      <div class="thermal-scale"><span>25°</span><span>36.5°</span><span>40°</span></div>
       <div class="status-row" id="p2Status"></div>
-      <div class="deck-info">
-        <div>덱 <b id="p2Deck">0</b></div>
-        <div>버림 <b id="p2Discard">0</b></div>
+      <div class="turn-info">
+        <div><span>남은 행동</span><b id="p2Actions">–</b></div>
       </div>
       <div class="preview">
         <div class="preview-title">다음 카드</div>
@@ -210,6 +235,7 @@
 
 <script src="rules.js"></script>
 <script src="messages.js"></script>
+<script src="battle-effects.js"></script>
 <script src="ui.js"></script>
 <script src="online.js"></script>
 </body>

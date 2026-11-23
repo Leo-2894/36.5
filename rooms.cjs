@@ -1,7 +1,7 @@
 "use strict";
 
 const { randomBytes, randomInt } = require("node:crypto");
-const { Match, SETTINGS, hasStatus } = require("./rules.js");
+const { Match, SETTINGS, hasStatus, stormPhaseMs } = require("./rules.js");
 
 const codeAlphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 const codePattern = /^[2-9A-HJ-NP-Z]{6}$/;
@@ -37,6 +37,7 @@ class Rooms {
   drop(room) {
     this.clearTimer(room);
     this.items.delete(room.code);
+    this.notify(room);
   }
 
   sweep() {
@@ -60,7 +61,7 @@ class Rooms {
     const token = randomBytes(24).toString("base64url");
     const room = {
       code, tokens: [token], match: null, version: 1, log: [],
-      eventId: 0, timer: null, deadline: null, expiresAt: this.now() + waitLifetime,
+      eventId: 0, timer: null, deadline: null, expiresAt: this.now() + waitLifetime, listeners: new Map(),
     };
     this.items.set(code, room);
     return { token, state: this.snapshot(room, "P1") };
@@ -79,7 +80,7 @@ class Rooms {
     const token = randomBytes(24).toString("base64url");
     room.tokens.push(token);
     room.expiresAt = this.now() + matchLifetime;
-    room.match = new Match({ aiPlayer: null, random: this.random, onEvent: event => this.record(room, event) });
+    room.match = new Match({ aiPlayer: null, timedStorms: true, random: this.random, onEvent: event => this.record(room, event) });
     room.match.start();
     this.commit(room, true);
     return { token, state: this.snapshot(room, "P2") };
@@ -92,10 +93,34 @@ class Rooms {
     return { room, side: sideNames[index] };
   }
 
-  read(code, token, after) {
+  read(code, token, after, eventId = 0) {
     const { room, side } = this.authorize(code, token);
     this.expireAction(room);
-    return room.version === after ? null : this.snapshot(room, side);
+    return room.version === after ? null : this.snapshot(room, side, eventId);
+  }
+
+  async watch(code, token, after, eventId, signal) {
+    const state = this.read(code, token, after, eventId);
+    if (state || signal.aborted) return state;
+    const { room, side } = this.authorize(code, token);
+    if (room.match?.gameOver || room.listeners.has(side)) return null;
+    await new Promise(resolve => {
+      const complete = () => {
+        this.unschedule(timer);
+        room.listeners.delete(side);
+        signal.removeEventListener("abort", complete);
+        resolve();
+      };
+      const timer = this.schedule(complete, 4500);
+      timer?.unref?.();
+      room.listeners.set(side, complete);
+      signal.addEventListener("abort", complete, { once: true });
+    });
+    return signal.aborted ? null : this.read(code, token, after, eventId);
+  }
+
+  notify(room) {
+    for (const complete of room.listeners.values()) complete();
   }
 
   leave(code, token) {
@@ -104,11 +129,11 @@ class Rooms {
     else if (room.match.forfeit(side === "P1" ? room.match.p1 : room.match.p2)) this.commit(room);
   }
 
-  action(code, token, command) {
+  action(code, token, command, eventId = 0) {
     const { room, side } = this.authorize(code, token);
     this.expireAction(room);
     const match = room.match;
-    if (!match || match.gameOver) throw new RoomError(409, "MATCH_UNAVAILABLE");
+    if (!match || match.gameOver || match.storm) throw new RoomError(409, "MATCH_UNAVAILABLE");
     if (command.version !== room.version) throw new RoomError(409, "STALE_ACTION");
     if (match.current !== side) throw new RoomError(409, "OPPONENT_TURN");
 
@@ -132,12 +157,13 @@ class Rooms {
     }
     if (!changed) throw new RoomError(409, "INVALID_ACTION");
     this.commit(room, command.type === "confirm" || command.type === "pass");
-    return this.snapshot(room, side);
+    return this.snapshot(room, side, eventId);
   }
 
   expireAction(room) {
     if (room.deadline === null || this.now() < room.deadline) return;
-    room.match.timeOut();
+    if (room.match.storm) room.match.advanceStorm();
+    else room.match.timeOut();
     this.commit(room, true);
   }
 
@@ -148,10 +174,12 @@ class Rooms {
       room.expiresAt = this.now() + resultLifetime;
     } else if (resetClock) {
       this.clearTimer(room);
-      const delay = SETTINGS.secondsPerAction * 1000;
+      const storm = room.match.storm;
+      const delay = storm ? stormPhaseMs(storm) : SETTINGS.secondsPerAction * 1000;
       room.deadline = this.now() + delay;
       this.armClock(room);
     }
+    this.notify(room);
   }
 
   armClock(room) {
@@ -174,7 +202,7 @@ class Rooms {
     if (room.log.length > 120) room.log.shift();
   }
 
-  snapshot(room, side) {
+  snapshot(room, side, eventId = 0) {
     const state = { code: room.code, side, version: room.version, phase: "waiting" };
     const match = room.match;
     if (!match) return state;
@@ -183,6 +211,8 @@ class Rooms {
       ...state,
       phase: match.gameOver ? "finished" : "playing",
       turn: match.turn, blizzardCount: match.blizzardCount, current: match.current,
+      storm: match.gameOver ? null : match.storm,
+      stormDamage: match.stormDamage,
       starter: match.starter, winner: match.winner,
       remainingMs: room.deadline === null ? null : Math.max(0, room.deadline - this.now()),
       players: match.players.map(player => {
@@ -194,12 +224,14 @@ class Rooms {
           usedThisTurn: player.usedThisTurn.map(card => card.id),
           ...(own && {
             hand: player.hand.map(card => card?.id ?? null),
+            swapAvailable: match.canSwap(player),
             pending: player.pending && { index: player.pending.index, card: player.pending.card.id },
             preview: hasStatus(player, "실명") ? null : match.preview(player)?.id ?? null,
           }),
         };
       }),
-      events: room.log.filter(event => !["draw", "swap"].includes(event.type) || event.player?.name === side),
+      events: eventId === room.eventId ? [] : room.log.filter(event => event.id > eventId &&
+        ((event.type !== "draw" && event.type !== "swap") || event.player?.name === side)),
     };
   }
 }
