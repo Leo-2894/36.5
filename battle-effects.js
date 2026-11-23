@@ -82,6 +82,8 @@ const BattleEffects = (() => {
       ctx.strokeStyle=ink; ctx.strokeRect(x-7.5,y-10.5,16,22);
       icon("arrow",ink,x,y,9);
     }
+    const halo = ctx.createRadialGradient(48,48,4,48,48,45);
+    halo.addColorStop(0,color+"65"); halo.addColorStop(.68,color+"28"); halo.addColorStop(1,color+"00");
     const begin = performance.now();
     function frame(now) {
       if (!canvas.isConnected) return;
@@ -91,8 +93,6 @@ const BattleEffects = (() => {
       const pulse = Math.sin(Math.PI*t);
       ctx.clearRect(0,0,96,96);
       ctx.globalAlpha = Math.min(1,t*8,(1-t)*5);
-      const halo = ctx.createRadialGradient(48,48,4,48,48,45);
-      halo.addColorStop(0,color+"65"); halo.addColorStop(.68,color+"28"); halo.addColorStop(1,color+"00");
       ctx.fillStyle=halo; ctx.fillRect(0,0,96,96);
       if (swap) {
         const a=t*Math.PI*1.4;
@@ -146,6 +146,7 @@ const BattleEffects = (() => {
       const panel = document.getElementById(target.toLowerCase() + "Temp").closest(".player");
       if (["swap","turn-control","recovery-lock","fever"].includes(id)) signature(id, panel);
       const end = center(panel.querySelector(".pilot"));
+      const radius = Math.min(65,panel.clientWidth*.36);
       for (let i = 0; i < 12; i++) {
         const impact = i >= 6;
         const angle = i * Math.PI / 3;
@@ -162,7 +163,6 @@ const BattleEffects = (() => {
         const gust = first === "wind" || id === "cooling-spray";
         const liquid = first === "drop" || first === "ring";
         const middleY = (start[1]+end[1])/2 + (gust ? (i-3)*4 : liquid ? -70 : -45+i*6);
-        const radius = Math.min(65,panel.clientWidth*.36);
         let dx = Math.cos(angle)*radius, dy = Math.sin(angle)*radius;
         if (airborne) { dx = (i-8.5)*9; dy = -radius*(.65+(i%3)*.18); }
         else if (gust) { dx = (end[0]>=start[0]?1:-1)*radius*.8; dy=(i-8.5)*10; }
@@ -183,19 +183,87 @@ const BattleEffects = (() => {
   }
   return {cast, clear: () => layer.replaceChildren()};
 })();
-{
-  const snow = document.getElementById("snow");
-  const flakes = document.createDocumentFragment();
-  for (let i = 0; i < 108; i++) {
-    const flake = document.createElement("i");
-    const depth = i % 3;
-    flake.style.setProperty("--size", (1.5 + depth * 1.4) + "px");
-    flake.style.setProperty("--alpha", .36 + depth * .22);
-    flake.style.setProperty("--speed", (2.1 - depth * .46) + "s");
-    flake.style.setProperty("--delay", -(i * .373 % 2.1) + "s");
-    flake.style.setProperty("--x", ((i * 61.803 % 100) * 1.1 - 5) + "%");
-    flake.style.setProperty("--y", ((i * 43.117 % 100) * 1.1 - 5) + "%");
-    flakes.append(flake);
+const Snowfall = (() => {
+  const layer = document.getElementById("snow");
+  const canvas = layer.querySelector("canvas");
+  const ctx = canvas.getContext("2d");
+  const motion = matchMedia("(prefers-reduced-motion: reduce)");
+  const { stormDuration } = GameRules.SETTINGS;
+  const frameInterval = 1000 / 60;
+  const flakes = Array.from({ length: 108 }, (_, index) => {
+    const depth = index % 3;
+    return {
+      depth,
+      x: (index * 0.61803) % 1,
+      y: (index * 0.43117) % 1,
+      phase: (index * 0.373) % 2.1,
+      speed: 2.1 - depth * 0.46,
+    };
+  });
+  let sprites;
+  let active = false;
+  let frame = 0;
+  let started = 0;
+  let nextDraw = 0;
+
+  function snowSprite(depth) {
+    const streak = document.createElement("canvas");
+    streak.width = 5 + depth * 3;
+    streak.height = 3 + depth;
+    const pen = streak.getContext("2d");
+    pen.fillStyle = "#c0e6ff";
+    pen.fillRect(0, 0, streak.width - 2, 1);
+    pen.fillRect(1, 1, streak.width - 1, 1);
+    pen.fillStyle = "#ecfaff";
+    pen.fillRect(streak.width - 3, 1, 2, streak.height - 1);
+    return streak;
   }
-  snow.append(flakes);
-}
+
+  function draw(now) {
+    frame = 0;
+    if (!active || motion.matches || now - started >= stormDuration) return;
+    if (now >= nextDraw) {
+      // Cap pixel fill on high-DPI displays and keep particle positions viewport-relative.
+      const scale = Math.min(0.75, 1440 / innerWidth, 810 / innerHeight);
+      const width = Math.max(1, Math.round(innerWidth * scale));
+      const height = Math.max(1, Math.round(innerHeight * scale));
+      if (canvas.width !== width) canvas.width = width;
+      if (canvas.height !== height) canvas.height = height;
+      sprites ??= [0, 1, 2].map(snowSprite);
+      ctx.clearRect(0, 0, width, height);
+      const time = (now - started) / 1000;
+      for (const flake of flakes) {
+        const progress = ((time + flake.phase) / flake.speed) % 1;
+        const drift = progress - 0.5;
+        const x = Math.round((flake.x + drift * 0.47) * width);
+        const y = Math.round((flake.y + drift * 0.22) * height);
+        ctx.globalAlpha = (0.36 + flake.depth * 0.22) * Math.min(1, progress / 0.18, (1 - progress) / 0.18);
+        ctx.drawImage(sprites[flake.depth], x, y);
+      }
+      // Keep the target rate without redrawing on every high-refresh display frame.
+      nextDraw = Math.max(nextDraw + frameInterval, now);
+    }
+    frame = requestAnimationFrame(draw);
+  }
+
+  function update(show, elapsedMs = 0) {
+    if (active === show) return;
+    active = show;
+    layer.style.animationDelay = show ? -elapsedMs + "ms" : "";
+    layer.classList.toggle("active", show);
+    if (show) {
+      started = performance.now() - elapsedMs;
+      nextDraw = started;
+      if (!motion.matches && ctx) frame = requestAnimationFrame(draw);
+    } else {
+      cancelAnimationFrame(frame);
+      frame = 0;
+      canvas.width = canvas.height = 1;
+    }
+  }
+
+  motion.addEventListener("change", () => {
+    if (active && !motion.matches && ctx && !frame) frame = requestAnimationFrame(draw);
+  });
+  return { update };
+})();
