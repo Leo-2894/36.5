@@ -32,6 +32,7 @@ const statusLayouts = new WeakMap();
 const queuedSwaps = new Map();
 const reactions = {
   wave: ["👋", "인사"], nice: ["👍", "좋아요"], cold: ["🥶", "추워요"], fire: ["🔥", "불타오르네"],
+  laugh: ["🤣", "호탕한 웃음"], dislike: ["👎", "역따봉"],
 };
 const reactionHide = new Map();
 let logNeedsScroll = false;
