@@ -238,7 +238,8 @@ test("emotes are rate limited and do not invalidate card actions or reset the cl
   action(guest, "confirm", {}, before.actionVersion);
   assert.equal(read(host).players[0].temp, 33);
   tick(1200);
-  assert.equal(action(host, "emote", { emote: "nice" }).events.at(-1).emote, "nice");
+  assert.equal(action(host, "emote", { emote: "laugh" }).events.at(-1).emote, "laugh");
+  assert.equal(action(guest, "emote", { emote: "dislike" }).events.at(-1).emote, "dislike");
 });
 
 test("leaving or canceling a long poll releases the room's listener", async () => {

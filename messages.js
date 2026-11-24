@@ -603,6 +603,8 @@ for (const [ko, en, ja] of [
   ["좋아요","Nice","いいね"],
   ["추워요","Brr!","寒い！"],
   ["불타오르네","On fire!","燃えてる！"],
+  ["호탕한 웃음","Laugh","大笑い"],
+  ["역따봉","Thumbs down","サムズダウン"],
   ["눈보라가 다가옵니다.","A blizzard is approaching.","吹雪が近づいています。"],
   ["3라운드마다 양쪽 기본 피해","Every 3 rounds, base damage to both players","3ラウンドごとに両者への基本ダメージ"],
   ["블리자드","Blizzard","吹雪"],

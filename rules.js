@@ -28,7 +28,7 @@ const GameRules = (() => {
     minHealingMultiplier: 0.5,
   });
 
-  const emotes = Object.freeze(["wave", "nice", "cold", "fire"]);
+  const emotes = Object.freeze(["wave", "nice", "cold", "fire", "laugh", "dislike"]);
 
   const cards = [
     { id: "hot-chocolate", name: "핫초코", type: "체온 상승", target: "self", temp: 1.5 },
