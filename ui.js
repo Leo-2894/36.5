@@ -142,7 +142,9 @@ function handleEvent(event, live = true) {
       if (live) {
         showCardCast(player, card);
         const rival = player.name === "P1" ? "P2" : "P1";
-        if (card.target !== "random") BattleEffects.cast(card.id, player.name,
+        // The preview can change height when its new card is rendered.
+        if (card.id === "swap") queuedSwaps.set(player.name, null);
+        else if (card.target !== "random") BattleEffects.cast(card.id, player.name,
           card.target === "both" ? [player.name, rival] : [card.target === "self" ? player.name : rival]);
         const wave = get("battleWave");
         wave.dataset.tone = cardTones[card.type];
@@ -636,7 +638,10 @@ function renderHand(player) {
     const shell = document.createElement("div");
     shell.className = "card-shell asset-skin";
     shell.dataset.handIndex = index;
-    if (drawnSlot === index) shell.classList.add("flip-enter");
+    if (drawnSlot === index) {
+      shell.classList.add("flip-enter");
+      if (!pending && queuedSwaps.get(player.name)?.replacementCard === card.id) shell.classList.add("swap-draw");
+    }
     shell.setAttribute("role", "button");
     setCardEnabled(shell, enabled);
 
@@ -794,7 +799,7 @@ function showPreviewSwap(player, event) {
   detail.append(name, destination);
   effect.append(art, detail);
   preview.append(effect);
-  setTimeout(() => effect.remove(), 1800);
+  setTimeout(() => effect.remove(), 2300);
 }
 
 function stormDamageText(damage) {
@@ -826,11 +831,12 @@ function render() {
   for (const player of match.players) {
     renderPlayer(player);
     renderSlot(player);
-    const swap = queuedSwaps.get(player.name);
-    if (swap) showPreviewSwap(player, swap);
+    if (queuedSwaps.has(player.name)) {
+      const swap = queuedSwaps.get(player.name);
+      if (swap) showPreviewSwap(player, swap);
+      BattleEffects.cast("swap", player.name, [player.name]);
+    }
   }
-  queuedSwaps.clear();
-
   const player = onlineSide ? match.players.find(side => side.name === onlineSide) : match.currentPlayer;
   const active = ownsTurn();
   const pending = active && player.pending;
@@ -846,6 +852,7 @@ function render() {
   setText(get("mainMenuBtn"), onlineSide && !match.gameOver ? "기권하고 나가기" : "메인화면으로");
   if (!active && !onlineSide && get("timer").textContent !== "–") get("timer").textContent = "–";
   renderHand(player);
+  queuedSwaps.clear();
   renderCardDetails();
   renderOnlineTurn();
   updateOnlineClock();
