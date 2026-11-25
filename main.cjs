@@ -4,7 +4,7 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { createGameServer, defaultPort } = require("./server.cjs");
 const { isCardArtwork, readCustomCardArt } = require("./card-art.cjs");
-const { openPublicTunnel, checkPublicOrigin } = require("./tunnel.cjs");
+const { openPublicTunnel, preparePublicTunnel, checkPublicOrigin } = require("./tunnel.cjs");
 
 const gamePage = path.join(__dirname, "index.html");
 const hosts = new Map();
@@ -28,20 +28,12 @@ function stopHost(session) {
   session.server.close();
 }
 
-async function hostGame(session, mode) {
-  const internet = mode === "internet";
-  const { server } = session;
-  await new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(internet ? 0 : defaultPort, internet ? "127.0.0.1" : "0.0.0.0", () => {
-      server.off("error", reject);
-      resolve();
-    });
-  });
-  const port = server.address().port;
-  if (internet) {
-    session.tunnel = await openPublicTunnel({
-      cacheDir: path.join(app.getPath("userData"), "invite-bridge"),
+const inviteCache = () => path.join(app.getPath("userData"), "invite-bridge");
+
+async function publishInternetInvite(session, port) {
+  try {
+    const tunnel = await openPublicTunnel({
+      cacheDir: inviteCache(),
       port,
       isOpen: () => session.open,
       checkAddress(origin) {
@@ -49,29 +41,81 @@ async function hostGame(session, mode) {
         return checkPublicOrigin(origin);
       },
     });
-    session.tunnel.onExit(() => {
+    if (!session.open) {
+      tunnel.close();
+      return;
+    }
+    session.tunnel = tunnel;
+    session.inviteState = "ready";
+    tunnel.onExit(() => {
       if (!session.open) return;
       stopHost(session);
-      hosts.delete(mode);
+      hosts.delete("internet");
       for (const win of BrowserWindow.getAllWindows()) {
         if (win.webContents.getURL().startsWith("http://127.0.0.1:" + port + "/")) {
           win.loadFile(gamePage, { query: { online: "tunnel-closed" } });
         }
       }
     });
+  } catch {
+    session.origin = null;
+    if (session.open) session.inviteState = "failed";
   }
+}
+
+async function hostGame(session, mode) {
+  const internet = mode === "internet";
+  const { server } = session;
+  const address = internet ? "127.0.0.1" : "0.0.0.0";
+  const listen = port => new Promise((resolve, reject) => {
+    const onError = error => {
+      server.off("listening", onListen);
+      reject(error);
+    };
+    const onListen = () => {
+      server.off("error", onError);
+      resolve();
+    };
+    server.once("error", onError);
+    server.once("listening", onListen);
+    server.listen(port, address);
+  });
+  try {
+    await listen(internet ? 0 : defaultPort);
+  } catch (error) {
+    if (internet || error.code !== "EADDRINUSE") throw error;
+    await listen(0);
+  }
+  const port = server.address().port;
+  if (internet) void publishInternetInvite(session, port);
   return "http://127.0.0.1:" + port;
 }
 
-ipcMain.handle("start-online-host", (event, mode) => {
+function requireDesktopGame(event) {
   const source = new URL(event.senderFrame.url);
   source.search = "";
   source.hash = "";
   if (source.href !== pathToFileURL(gamePage).href) throw new Error("Invalid host request");
+}
+
+ipcMain.handle("prepare-internet-host", async event => {
+  requireDesktopGame(event);
+  if (!hosts.has("internet")) await preparePublicTunnel(inviteCache());
+});
+
+ipcMain.handle("start-online-host", (event, mode) => {
+  requireDesktopGame(event);
   if (!["lan", "internet"].includes(mode)) throw new Error("Invalid host mode");
+  const previous = hosts.get(mode);
+  if (previous?.inviteState === "failed") {
+    stopHost(previous);
+    hosts.delete(mode);
+  }
   if (!hosts.has(mode)) {
-    const session = { open: true, origin: null };
-    session.server = createGameServer({ inviteOrigin: () => session.origin, customCardArt, mode });
+    const session = { open: true, origin: null, inviteState: mode === "internet" ? "preparing" : null };
+    session.server = createGameServer({
+      inviteOrigin: () => session.origin, inviteState: () => session.inviteState, customCardArt, mode,
+    });
     session.ready = hostGame(session, mode).catch(error => {
       stopHost(session);
       hosts.delete(mode);

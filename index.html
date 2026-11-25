@@ -11,7 +11,7 @@
 </head>
 <body class="game-not-started">
 <div class="screen-flash" id="screenFlash"></div>
-<div class="snow" id="snow" aria-hidden="true"></div>
+<div class="snow" id="snow" aria-hidden="true"><canvas width="1" height="1"></canvas></div>
 <div id="castTrail" aria-hidden="true"></div>
 <div id="battleWave" aria-hidden="true"></div>
 <aside id="stormNotice" role="status" hidden><strong>블리자드</strong><span id="stormText"></span></aside>
@@ -29,7 +29,7 @@
   <header class="lobby-header">
     <div>
       <h1 id="onlineTitle">온라인 1대1</h1>
-      <p>친구와 초대 코드로 대전하세요.</p>
+      <p id="onlineIntro">친구와 초대 코드로 대전하세요.</p>
     </div>
     <div class="lobby-art" aria-hidden="true">
       <span><img src="assets/lobby/heat-pack.png" alt=""></span>
@@ -72,15 +72,28 @@
     </form>
   </div>
   <div id="waitingRoom" hidden>
-    <p class="lobby-waiting">친구가 입장하면 대전이 시작됩니다.</p>
+    <p class="lobby-waiting">친구에게 초대 링크를 보내 주세요.</p>
     <label for="roomCode">초대 코드</label>
     <output id="roomCode" class="lobby-code"></output>
+    <p id="inviteStatus" class="lobby-host-help" role="status" hidden></p>
+    <div id="lanAddressPicker" hidden>
+      <label for="lanAddress">같은 네트워크 초대 주소</label>
+      <select id="lanAddress"></select>
+    </div>
     <label for="inviteLink">초대 링크</label>
     <div class="lobby-row">
       <input id="inviteLink" type="text" readonly>
       <button id="copyInviteBtn">복사</button>
     </div>
   </div>
+  <section id="matchLobby" hidden>
+    <p class="lobby-waiting">두 플레이어가 모두 준비하면 대전이 시작됩니다.</p>
+    <div class="lobby-seats" aria-live="polite">
+      <div class="lobby-seat" id="lobbyP1"><strong></strong><span></span></div>
+      <div class="lobby-seat" id="lobbyP2"><strong></strong><span></span></div>
+    </div>
+    <button type="button" id="lobbyReadyBtn" class="lobby-primary" aria-pressed="false">준비 완료</button>
+  </section>
   <p id="onlineMessage" class="lobby-message" role="status"></p>
   <button id="closeOnlineBtn" class="lobby-back">돌아가기</button>
 </dialog>
@@ -148,6 +161,7 @@
     <section class="panel player">
       <h2>P1 <span class="ai-badge" id="p1Badge">플레이어</span></h2>
       <div class="pilot heat-pilot" aria-hidden="true"><i></i></div>
+      <div class="reactions" id="p1Reactions" hidden><output class="reaction-bubble" hidden></output><div class="reaction-buttons" hidden></div></div>
       <div class="temp" id="p1Temp">36.5°C</div>
       <div class="bar"><div class="bar-inner" id="p1Bar"></div></div>
       <div class="thermal-scale"><span>25°</span><span>36.5°</span><span>40°</span></div>
@@ -218,6 +232,7 @@
     <section class="panel player">
       <h2>P2 <span class="ai-badge" id="p2Badge">AI</span></h2>
       <div class="pilot cold-pilot" aria-hidden="true"><i></i></div>
+      <div class="reactions" id="p2Reactions" hidden><output class="reaction-bubble" hidden></output><div class="reaction-buttons" hidden></div></div>
       <div class="temp" id="p2Temp">36.5°C</div>
       <div class="bar"><div class="bar-inner" id="p2Bar"></div></div>
       <div class="thermal-scale"><span>25°</span><span>36.5°</span><span>40°</span></div>
