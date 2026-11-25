@@ -11,7 +11,7 @@ let match = null;
 let turnTimer = null;
 let endingTimer = null;
 let deadline = 0;
-let drawnSlot = null;
+let lastDraw = null;
 let handOwner = null;
 const handSlots = [];
 let hoveredCard = null;
@@ -30,6 +30,11 @@ const slotLayouts = new WeakMap();
 const playerReadings = new WeakMap();
 const statusLayouts = new WeakMap();
 const queuedSwaps = new Map();
+const reactions = {
+  wave: ["👋", "인사"], nice: ["👍", "좋아요"], cold: ["🥶", "추워요"], fire: ["🔥", "불타오르네"],
+  laugh: ["🤣", "호탕한 웃음"], dislike: ["👎", "역따봉"],
+};
+const reactionHide = new Map();
 let logNeedsScroll = false;
 const cardTones = { "체온 상승": "heat", "체온 저하": "ice", "복불복": "chance", "효과": "status", "자폭": "fracture", "스페셜": "rare" };
 
@@ -120,6 +125,9 @@ function stopBgm() {
 function handleEvent(event, live = true) {
   const { type, player, card, status } = event;
   switch (type) {
+    case "emote":
+      if (live) showReaction(event.from, event.emote);
+      break;
     case "start":
       log(player.name + " 선공 · 게임 시작", "good");
       break;
@@ -134,7 +142,9 @@ function handleEvent(event, live = true) {
       if (live) {
         showCardCast(player, card);
         const rival = player.name === "P1" ? "P2" : "P1";
-        if (card.target !== "random") BattleEffects.cast(card.id, player.name,
+        // The preview can change height when its new card is rendered.
+        if (card.id === "swap") queuedSwaps.set(player.name, null);
+        else if (card.target !== "random") BattleEffects.cast(card.id, player.name,
           card.target === "both" ? [player.name, rival] : [card.target === "self" ? player.name : rival]);
         const wave = get("battleWave");
         wave.dataset.tone = cardTones[card.type];
@@ -143,7 +153,13 @@ function handleEvent(event, live = true) {
       }
       break;
     case "draw":
-      if (live && !player.isAI) drawnSlot = event.index;
+      if (live && !player.isAI) {
+        lastDraw = event;
+        if (event.fromSwap) {
+          queuedSwaps.delete(player.name);
+          get(playerPrefix(player) + "Next").querySelector(".preview-swap")?.remove();
+        }
+      }
       break;
     case "temperature": {
       const sign = event.delta > 0 ? "+" : "";
@@ -286,10 +302,17 @@ function resetMatch() {
   clearTimeout(endingTimer);
   clearTimeout(flashTimer);
   get("stormNotice").hidden = true;
-  get("snow").classList.remove("active");
-  get("snow").style.animationDelay = "";
+  Snowfall.update(false);
   BattleEffects.clear();
   queuedSwaps.clear();
+  for (const timer of reactionHide.values()) clearTimeout(timer);
+  reactionHide.clear();
+  for (const prefix of ["p1", "p2"]) {
+    const row = get(prefix + "Reactions");
+    row.hidden = true;
+    row.querySelector("output").hidden = true;
+    for (const button of row.querySelectorAll("button")) button.disabled = false;
+  }
   document.querySelectorAll(".preview-swap").forEach(effect => effect.remove());
   get("screenFlash").className = "screen-flash";
   clearDragVisuals();
@@ -298,7 +321,7 @@ function resetMatch() {
   for (const id of ["p1Slot", "p2Slot"]) slotLayouts.delete(get(id));
   document.querySelectorAll(".rh-shake").forEach(panel => panel.classList.remove("rh-shake"));
   hideEndingScene();
-  drawnSlot = null;
+  lastDraw = null;
   handOwner = null;
   hoveredCard = null;
   match = null;
@@ -382,16 +405,16 @@ function receiveOnlineState(state, events, requestMs, restoring) {
     pending: player.pending && { index: player.pending.index, card: card(player.pending.card) },
     nextCard: card(player.preview),
   }));
-  const snow = get("snow");
+  let stormElapsedMs = 0;
   if (state.storm && !match.storm && state.remainingMs !== null) {
     const phaseLeft = Math.max(0, state.remainingMs - requestMs / 2);
     const stormLeft = phaseLeft + (state.storm === "approaching" ? GameRules.stormPhaseMs("active") : 0);
-    snow.style.animationDelay = -Math.max(0, SETTINGS.stormDuration - stormLeft) + "ms";
+    stormElapsedMs = Math.max(0, SETTINGS.stormDuration - stormLeft);
   }
   Object.assign(match, {
     players, currentPlayer: players.find(player => player.name === state.current),
     current: state.current, starter: state.starter, turn: state.turn,
-    storm: state.storm, stormDamage: state.stormDamage,
+    storm: state.storm, stormDamage: state.stormDamage, stormElapsedMs,
     blizzardCount: state.blizzardCount, gameOver: state.phase === "finished",
   });
   onlineDeadline = state.storm || state.remainingMs === null ? null : performance.now() + Math.max(0, state.remainingMs - requestMs / 2);
@@ -473,8 +496,22 @@ async function cancelSelection(event) {
   }
 }
 
+function showReaction(side, emote) {
+  const reaction = reactions[emote];
+  if (!reaction || !["P1", "P2"].includes(side)) return;
+  const bubble = get(side.toLowerCase() + "Reactions").querySelector("output");
+  const [emoji, label] = reaction;
+  setText(bubble, emoji + " " + label);
+  bubble.hidden = false;
+  clearTimeout(reactionHide.get(side));
+  reactionHide.set(side, setTimeout(() => { bubble.hidden = true; reactionHide.delete(side); }, 2100));
+}
+
 function renderPlayer(player) {
   const prefix = playerPrefix(player);
+  const row = get(prefix + "Reactions");
+  setFlag(row, "hidden", !onlineSide || match.gameOver);
+  setFlag(row.querySelector(".reaction-buttons"), "hidden", onlineSide !== player.name);
   const temp = get(prefix + "Temp");
   const panel = temp.closest(".player");
   panel.classList.toggle("chained", hasStatus(player, "행동 제한"));
@@ -565,6 +602,8 @@ function remainingActions(player) {
 
 function renderHand(player) {
   const hand = get("hand");
+  const draw = lastDraw?.player.name === player.name ? lastDraw : null;
+  lastDraw = null;
   const active = ownsTurn();
   const owner = player.isAI ? "AI" : player.name;
   if (handOwner !== owner) {
@@ -596,7 +635,7 @@ function renderHand(player) {
     const reason = match.gameOver ? "게임 종료" : !active ? "상대 차례"
       : pending ? "카드 대기중" : player.pending ? "배치한 카드를 확정하거나 취소하세요." : legalCard(player, card);
     const enabled = !reason;
-    if (previous?.card === card && previous.pending === pending && drawnSlot !== index) {
+    if (previous?.card === card && previous.pending === pending && draw?.index !== index) {
       if (previous.enabled !== enabled) {
         setCardEnabled(previous.shell, enabled);
         previous.enabled = enabled;
@@ -607,7 +646,11 @@ function renderHand(player) {
     const shell = document.createElement("div");
     shell.className = "card-shell asset-skin";
     shell.dataset.handIndex = index;
-    if (drawnSlot === index) shell.classList.add("flip-enter");
+    shell.style.gridColumn = String(index + 1);
+    if (draw?.index === index && draw.card?.id === card.id) {
+      shell.classList.add("flip-enter");
+      if (!pending && draw.fromSwap) shell.classList.add("swap-draw");
+    }
     shell.setAttribute("role", "button");
     setCardEnabled(shell, enabled);
 
@@ -655,7 +698,6 @@ function renderHand(player) {
     else hand.insertBefore(shell, handSlots.slice(index + 1).find(Boolean)?.shell ?? null);
     handSlots[index] = { card, pending, enabled, reason, shell };
   }
-  drawnSlot = null;
 }
 
 function setCardEnabled(shell, enabled) {
@@ -761,11 +803,11 @@ function showPreviewSwap(player, event) {
   const name = document.createElement("strong");
   const destination = document.createElement("small");
   setText(name, replacement.name);
-  setText(destination, "교체 완료 · 손패에 추가");
+  setText(destination, "교체 완료 · 다음에 뽑을 카드");
   detail.append(name, destination);
   effect.append(art, detail);
   preview.append(effect);
-  setTimeout(() => effect.remove(), 1800);
+  setTimeout(() => effect.remove(), 2300);
 }
 
 function stormDamageText(damage) {
@@ -776,9 +818,7 @@ function render() {
   if (!match) return;
   const storm = !match.gameOver && match.storm;
   get("stormNotice").hidden = !storm;
-  const snow = get("snow");
-  snow.classList.toggle("active", Boolean(storm));
-  if (!storm) snow.style.animationDelay = "";
+  Snowfall.update(Boolean(storm), match.stormElapsedMs);
   if (storm) {
     const approaching = storm === "approaching";
     const damage = match.stormDamage ?? Object.fromEntries(match.players.map(player => [player.name, GameRules.blizzardDamage(player)]));
@@ -799,11 +839,12 @@ function render() {
   for (const player of match.players) {
     renderPlayer(player);
     renderSlot(player);
-    const swap = queuedSwaps.get(player.name);
-    if (swap) showPreviewSwap(player, swap);
+    if (queuedSwaps.has(player.name)) {
+      const swap = queuedSwaps.get(player.name);
+      if (swap) showPreviewSwap(player, swap);
+      BattleEffects.cast("swap", player.name, [player.name]);
+    }
   }
-  queuedSwaps.clear();
-
   const player = onlineSide ? match.players.find(side => side.name === onlineSide) : match.currentPlayer;
   const active = ownsTurn();
   const pending = active && player.pending;
@@ -819,6 +860,7 @@ function render() {
   setText(get("mainMenuBtn"), onlineSide && !match.gameOver ? "기권하고 나가기" : "메인화면으로");
   if (!active && !onlineSide && get("timer").textContent !== "–") get("timer").textContent = "–";
   renderHand(player);
+  queuedSwaps.clear();
   renderCardDetails();
   renderOnlineTurn();
   updateOnlineClock();
@@ -830,6 +872,23 @@ function render() {
 }
 
 for (const prefix of ["p1", "p2"]) {
+  const panel = get(prefix + "Reactions").querySelector(".reaction-buttons");
+  for (const emote of GameRules.emotes) {
+    const [emoji, label] = reactions[emote];
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = emoji;
+    button.dataset.ariaLabel = label;
+    button.onclick = async () => {
+      const currentMatch = match;
+      for (const choice of panel.children) choice.disabled = true;
+      const sent = await Online.action("emote", { emote });
+      setTimeout(() => {
+        if (match === currentMatch) for (const choice of panel.children) choice.disabled = false;
+      }, sent ? 1200 : 0);
+    };
+    panel.append(button);
+  }
   const zone = get(prefix + "Slot").closest(".slot");
   const acceptsDrag = () => ownsTurn() && playerPrefix(match.currentPlayer) === prefix && activeDrag?.session === match;
   zone.ondragover = event => {

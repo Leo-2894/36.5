@@ -17,9 +17,13 @@ const Online = (() => {
     STALE_ACTION: "경기가 갱신되었습니다. 현재 차례를 확인하세요.",
     INVALID_ACTION: "지금은 이 행동을 할 수 없습니다.",
     UNAUTHORIZED: "방 접속 정보가 만료되었습니다.",
+    MATCH_UNAVAILABLE: "이 방에서는 지금 이 행동을 할 수 없습니다.",
   };
   let session = null;
   let pollTimer = null;
+  let inviteTimer = null;
+  let inviteState = null;
+  let lanAddresses = [];
   let busy = false;
   let selectedMode = hosted ? expectedMode : null;
   let serverModeMismatch = false;
@@ -90,25 +94,80 @@ const Online = (() => {
 
   function inviteLink() {
     if (!session || session.playing) return;
+    const selector = get("lanAddress");
+    get("lanAddressPicker").hidden = selectedMode !== "lan" || lanAddresses.length < 2;
     const output = get("inviteLink");
     output.value = "";
-    if (!inviteOrigin) {
+    const address = selectedMode === "lan" ? selector.value || inviteOrigin : inviteOrigin;
+    if (!address) {
       get("copyInviteBtn").disabled = true;
       return;
     }
-    const url = new URL("/", inviteOrigin);
+    const url = new URL("/", address);
     url.searchParams.set("room", session.code);
     if (selectedMode) url.searchParams.set("mode", selectedMode);
     output.value = url.href;
     get("copyInviteBtn").disabled = busy;
   }
 
-  function showWaiting() {
+  function showInviteStatus(room) {
+    const status = get("inviteStatus");
+    status.hidden = !["preparing", "failed"].includes(inviteState);
+    if (inviteState === "failed") {
+      setText(status, "공개 주소를 열지 못했습니다. 돌아가서 방 만들기를 다시 눌러 주세요.");
+    } else if (inviteState === "preparing") {
+      setText(status, "방이 생성되었습니다. 공개 주소 연결이 확인되면 링크를 복사할 수 있습니다.");
+    }
+    clearTimeout(inviteTimer);
+    if (inviteState !== "preparing") return;
+    inviteTimer = setTimeout(async () => {
+      try {
+        const info = await request("/api/info");
+        if (session !== room || room.playing) return;
+        inviteOrigin = info.origin ?? inviteOrigin;
+        inviteState = info.inviteState ?? null;
+        inviteLink();
+      } catch {
+        if (session !== room || room.playing) return;
+      }
+      showInviteStatus(room);
+    }, 900);
+  }
+
+  function syncReadyButton() {
+    const button = get("lobbyReadyBtn");
+    const ready = session?.ownReady ?? false;
+    button.disabled = busy || session?.phase !== "lobby" || session.sending;
+    button.setAttribute("aria-pressed", String(ready));
+    setText(button, ready ? "준비 취소" : "준비 완료");
+  }
+
+  function showWaiting(room, state) {
+    const inLobby = state.phase === "lobby";
+    const segmentWasHidden = get("matchLobby").hidden;
     get("onlineChoices").hidden = true;
-    get("waitingRoom").hidden = false;
-    get("roomCode").textContent = session.code;
-    inviteLink();
+    get("waitingRoom").hidden = inLobby;
+    get("matchLobby").hidden = !inLobby;
+    get("onlineIntro").hidden = inLobby;
+    setText(get("onlineTitle"), inLobby ? "대전 대기실" : modeTitles[selectedMode] ?? "온라인 1대1");
     message("");
+    if (!inLobby) {
+      get("roomCode").textContent = room.code;
+      inviteLink();
+      showInviteStatus(room);
+      return;
+    }
+    clearTimeout(inviteTimer);
+    for (const [index, row] of [get("lobbyP1"), get("lobbyP2")].entries()) {
+      const side = index === 0 ? "P1" : "P2";
+      const ready = state.ready[index];
+      setText(row.querySelector("strong"), side + " · " + (state.side === side ? "내 자리" : "상대 자리"));
+      setText(row.querySelector("span"), ready ? "준비 완료" : "준비 중");
+      row.classList.toggle("is-ready", ready);
+    }
+    room.ownReady = state.ready[state.side === "P1" ? 0 : 1];
+    syncReadyButton();
+    if (segmentWasHidden && !busy) get("lobbyReadyBtn").focus();
   }
 
   function openLobby() {
@@ -118,7 +177,9 @@ const Online = (() => {
     get("hostModeBtn").hidden = !window.desktopOnline;
     get("internetHelp").hidden = !window.desktopOnline || selectedMode !== "internet";
     get("onlineChoices").hidden = !hosted || Boolean(session) || serverModeMismatch;
-    get("waitingRoom").hidden = !session || session.playing;
+    get("waitingRoom").hidden = session?.phase !== "waiting";
+    get("matchLobby").hidden = session?.phase !== "lobby";
+    get("onlineIntro").hidden = session?.phase === "lobby";
     if (!dialog.open) dialog.showModal();
     if (!session) message(serverModeMismatch ? mismatchMessage : "");
     if (hosted && !serverModeMismatch && get("inviteCode").value) get("inviteCode").focus();
@@ -135,6 +196,7 @@ const Online = (() => {
   function forget(room = session) {
     if (session !== room) return;
     clearTimeout(pollTimer);
+    clearTimeout(inviteTimer);
     room?.pollController?.abort();
     session = null;
     remember(null);
@@ -170,21 +232,31 @@ const Online = (() => {
 
   function applyState(room, data, requestMs) {
     if (!data || session !== room || data.version <= room.version) return;
+    const previousPhase = room.phase;
+    room.phase = data.phase;
     room.version = data.version;
     const restoring = room.restoring;
     room.restoring = false;
-    if (data.phase === "waiting") {
-      showWaiting();
+    if (data.phase === "waiting" || data.phase === "lobby") {
+      room.lobbyId = data.lobbyId;
+      showWaiting(room, data);
       return;
     }
 
+    const actionVersion = data.actionVersion ?? data.version;
+    const gameplayChanged = !room.playing || room.actionVersion !== actionVersion || previousPhase !== data.phase;
+    room.actionVersion = actionVersion;
     if (dialog.open) dialog.close();
+    clearTimeout(inviteTimer);
     room.playing = true;
     room.finished = data.phase === "finished";
     if (room.finished) room.pollController?.abort();
     const events = data.events.filter(event => event.id > room.eventId);
     if (events.length) room.eventId = events.at(-1).id;
-    receiveOnlineState(data, events, requestMs, restoring);
+    if (gameplayChanged) receiveOnlineState(data, events, requestMs, restoring);
+    else if (!restoring) for (const event of events) {
+      if (event.type === "emote") showReaction(event.from, event.emote);
+    }
   }
 
   function schedulePoll(room, delay = 650) {
@@ -237,7 +309,7 @@ const Online = (() => {
     remember(room);
     updateRoomCode(room.code);
     applyState(room, data, requestMs);
-    schedulePoll(room, data ? 350 : 0);
+    schedulePoll(room, 0);
   }
 
   async function lobbyRequest(operation) {
@@ -250,31 +322,39 @@ const Online = (() => {
     finally {
       busy = false;
       enableLobbyButtons(true);
+      syncReadyButton();
+      if (session?.phase === "lobby") get("lobbyReadyBtn").focus();
     }
   }
 
   async function action(type, detail = {}) {
     const room = session;
-    if (!room?.playing || room.finished || room.sending) return false;
-    room.sending = true;
+    const ready = type === "ready";
+    const emote = type === "emote";
+    const pending = emote ? "reacting" : "sending";
+    if (!room || room.finished || room[pending] || (ready ? room.phase !== "lobby" : !room.playing)) return false;
+    room[pending] = true;
+    if (ready) syncReadyButton();
     const sent = performance.now();
     try {
       const state = await request(roomPath(room, "/action") + "?event=" + room.eventId, {
-        token: room.token, body: { type, ...detail, version: room.version },
+        token: room.token, body: { type, ...detail, version: room.actionVersion, lobbyId: room.lobbyId },
       });
       if (session !== room) return false;
-      setOnlineNotice("");
+      if (!ready && !emote) setOnlineNotice("");
       applyState(room, state, performance.now() - sent);
       return true;
     } catch (error) {
       if (session === room) {
-        setOnlineNotice(error.code === "OPPONENT_TURN" ? "상대 차례" : errorMessage(error));
+        if (ready && !room.playing) message(errorMessage(error));
+        else if (!emote) setOnlineNotice(error.code === "OPPONENT_TURN" ? "상대 차례" : errorMessage(error));
         room.pollController?.abort();
         schedulePoll(room, 0);
       }
       return false;
     } finally {
-      room.sending = false;
+      room[pending] = false;
+      if (ready) syncReadyButton();
     }
   }
 
@@ -283,12 +363,16 @@ const Online = (() => {
     const scheme = selectedMode === "internet" ? "https://" : "http://";
     const url = new URL(/^[a-z]+:\/\//i.test(normalized) ? normalized : scheme + normalized);
     if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) throw new Error();
+    if (selectedMode === "lan" && !url.port && normalized === url.hostname) url.port = "3650";
     return url;
   }
 
   get("onlineBtn").onclick = openLobby;
   get("chooseLanMode").onclick = () => selectMode("lan");
-  get("chooseInternetMode").onclick = () => selectMode("internet");
+  get("chooseInternetMode").onclick = () => {
+    selectMode("internet");
+    window.desktopOnline?.prepareInternet?.().catch(() => {});
+  };
   get("closeOnlineBtn").onclick = dismiss;
   dialog.oncancel = event => { event.preventDefault(); dismiss(); };
   window.addEventListener("pageshow", event => {
@@ -306,7 +390,7 @@ const Online = (() => {
       location.assign(new URL("/?online=host&desktop=1&mode=" + mode, address));
     } catch {
       message(internet ? "인터넷 초대 주소를 만들지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도하세요."
-        : "이 PC에서 서버를 시작할 수 없습니다. 3650 포트가 사용 중인지 확인하세요.");
+        : "이 PC에서 같은 네트워크 방을 열지 못했습니다. 네트워크 연결을 확인해 주세요.");
     }
   });
   get("hostModeBtn").onclick = () => startDesktopHost(selectedMode);
@@ -340,6 +424,7 @@ const Online = (() => {
       const target = new URL("/", url.origin);
       target.searchParams.set("room", code);
       target.searchParams.set("mode", selectedMode);
+      target.searchParams.set("join", "1");
       if (window.desktopOnline) target.searchParams.set("desktop", "1");
       location.assign(target);
     } catch { message("올바른 서버 주소 또는 초대 링크를 입력하세요."); }
@@ -359,9 +444,14 @@ const Online = (() => {
   }
 
   get("createRoomBtn").onclick = createRoom;
+  get("lobbyReadyBtn").onclick = () => action("ready", { ready: !session?.ownReady });
+  get("lanAddress").onchange = inviteLink;
   get("joinForm").onsubmit = event => {
     event.preventDefault();
-    const code = get("inviteCode").value.trim().toUpperCase();
+    joinRoom(get("inviteCode").value.trim().toUpperCase());
+  };
+
+  function joinRoom(code) {
     if (!roomPattern.test(code)) {
       message("초대 코드 6자리를 확인하세요.");
       return;
@@ -376,7 +466,7 @@ const Online = (() => {
       const result = await request(roomPath({ code }, "/join"), { body: {} });
       startSession({ token: result.token, code }, result.state, performance.now() - sent);
     });
-  };
+  }
 
   get("copyInviteBtn").onclick = async () => {
     const input = get("inviteLink");
@@ -401,7 +491,10 @@ const Online = (() => {
     }
     selectedMode = mode ?? expectedMode;
     setText(get("onlineTitle"), modeTitles[selectedMode] ?? "온라인 1대1");
-    inviteOrigin = info.origin ?? info.addresses[0] ?? inviteOrigin;
+    lanAddresses = [...new Set(info.addresses ?? [])];
+    get("lanAddress").replaceChildren(...lanAddresses.map(address => new Option(address, address)));
+    inviteOrigin = info.origin ?? lanAddresses[0] ?? inviteOrigin;
+    inviteState = info.inviteState ?? null;
     inviteLink();
   }).catch(() => {}) : null;
   if (hosted) {
@@ -421,6 +514,10 @@ const Online = (() => {
       query.set("online", "1");
       history.replaceState(null, "", "/?" + query);
       serverInfo.then(createRoom);
+    } else if (query.get("join") === "1" && roomPattern.test(code)) {
+      query.delete("join");
+      history.replaceState(null, "", "/?" + query);
+      joinRoom(code);
     }
   } else if (query.get("online") === "tunnel-closed") {
     selectMode("internet");

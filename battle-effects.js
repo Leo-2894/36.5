@@ -9,6 +9,7 @@ const BattleEffects = (() => {
     wind: ["....xx.", ".....xx", ".xxxxx.", ".......", "xxxxxx.", "....xx."],
     snow: ["x..x..x", ".x.x.x.", "..xxx..", "xxxxxxx", "..xxx..", ".x.x.x.", "x..x..x"],
     crystal: ["..x..", ".xxx.", "xxxxx", ".xxx.", "..x.."],
+    glint: ["...x...", "...x...", "..xxx..", "xxxxxxx", "..xxx..", "...x...", "...x..."],
     ring: [".xxx.", "xx.xx", "x...x", "xx.xx", ".xxx."],
     heart: [".xx.xx.", "xxxxxxx", "xxxxxxx", ".xxxxx.", "..xxx..", "...x..."],
     stitch: ["xx...xx", ".xx.xx.", "..xxx..", ".xx.xx.", "xx...xx"],
@@ -34,7 +35,7 @@ const BattleEffects = (() => {
     "heat-pack": ["heart","steam","#ff9c7d"], clothes: ["stitch","heart","#f8cf98"],
     tylenol: ["cross","ring","#9ef2c9"], "electric-fan": ["wind","shard","#98e5da"],
     "frostbite-patch": ["snow","cross","#8ddfff"], "clothing-damage": ["stitch","shard","#ffa994"],
-    swap: ["arrow","crystal","#81e5d5","#ffd471"], "turn-control": ["link","lock","#ffd770"],
+    swap: ["arrow","glint","#edac44","#fff0a9"], "turn-control": ["link","lock","#ffd770"],
     "recovery-lock": ["lock","cross","#edab85","#ffdf9e"], fever: ["skull","drop","#ce9aff","#99e49c"],
   };
   const layer = document.getElementById("castTrail");
@@ -61,46 +62,73 @@ const BattleEffects = (() => {
     const r = node.getBoundingClientRect();
     return [r.left + r.width / 2, r.top + r.height / 2];
   }
+  function exchangeFlight([fromX, fromY], [toX, toY]) {
+    const crest = Math.min(fromY, toY) - Math.min(68, Math.abs(toX - fromX) * .18);
+    for (let index = 0; index < 3; index++) {
+      const slip = document.createElement("i");
+      slip.className = "exchange-flight";
+      const midX = Math.round((fromX + toX) / 2);
+      const midY = Math.round(crest + index * 26);
+      slip.style.offsetPath = `path("M ${fromX} ${fromY} Q ${midX} ${midY} ${toX} ${toY}")`;
+      layer.append(slip);
+      const flight = slip.animate([
+        { offsetDistance: "0%", opacity: 0 },
+        { offset: .16, offsetDistance: "13%", opacity: 1 },
+        { offset: .85, offsetDistance: "89%", opacity: 1 },
+        { offsetDistance: "100%", opacity: 0 },
+      ], { duration: 480, delay: index * 48, easing: "ease-in-out" });
+      flight.onfinish = () => slip.remove();
+    }
+  }
   // Draw the four rare impacts on a small pixel grid, then scale it with the HUD.
-  function signature(id, panel) {
+  function signature(id, anchor, panel) {
     const swap = id === "swap";
-    const [cx, cy] = center(panel.querySelector(".pilot"));
-    const side = Math.min(240, innerWidth * .68, Math.max(152, panel.clientWidth * 1.12));
+    const [cx, cy] = center(anchor);
+    const side = swap ? Math.min(112, panel.clientWidth * .68)
+      : Math.min(240, innerWidth * .68, Math.max(152, panel.clientWidth * 1.12));
+    // Keep the orbit in the artwork column, clear of the replacement card's name.
+    const orbitWidth = anchor.classList.contains("preview-swap-art")
+      ? Math.min(1, (anchor.clientWidth + 8) / (side * .8)) : 1;
     const canvas = document.createElement("canvas");
     canvas.className = "signature";
     canvas.dataset.card = id;
     canvas.width = canvas.height = 96;
-    Object.assign(canvas.style, {width:side+"px", height:side+"px", left:Math.max(0,Math.min(innerWidth-side,cx-side/2))+"px",
-      top:Math.max(0,Math.min(innerHeight-side,cy-side/2))+"px", opacity:"1"});
+    const left = cx - side / 2, top = cy - side / 2;
+    Object.assign(canvas.style, {width:side+"px", height:side+"px", left:(swap ? left : Math.max(0,Math.min(innerWidth-side,left)))+"px",
+      top:(swap ? top : Math.max(0,Math.min(innerHeight-side,top)))+"px", opacity:"1"});
     layer.append(canvas);
     const ctx = canvas.getContext("2d");
     ctx.imageSmoothingEnabled = false;
     const [,,color, accent=color] = styles[id];
     const icon = (name, tint, x, y, size) => ctx.drawImage(sprite(name,tint), Math.round(x-size/2),Math.round(y-size/2),size,size);
-    function card(x,y,ink) {
-      ctx.fillStyle="#192a3b"; ctx.fillRect(x-7,y-10,15,21);
-      ctx.strokeStyle=ink; ctx.strokeRect(x-7.5,y-10.5,16,22);
-      icon("arrow",ink,x,y,9);
-    }
-    const begin = performance.now();
+    const halo = ctx.createRadialGradient(48,48,4,48,48,45);
+    halo.addColorStop(0,color+"65"); halo.addColorStop(.68,color+"28"); halo.addColorStop(1,color+"00");
+    // Let the trail reach the preview before the exchange arrows close around it.
+    const begin = performance.now() + (swap ? 320 : 0);
     function frame(now) {
       if (!canvas.isConnected) return;
+      if (now < begin) { requestAnimationFrame(frame); return; }
       const t = Math.min(1,(now-begin)/1480);
       if (t >= 1 || reduced.matches) { canvas.remove(); return; }
       const close = Math.min(1,t/.46);
       const pulse = Math.sin(Math.PI*t);
       ctx.clearRect(0,0,96,96);
       ctx.globalAlpha = Math.min(1,t*8,(1-t)*5);
-      const halo = ctx.createRadialGradient(48,48,4,48,48,45);
-      halo.addColorStop(0,color+"65"); halo.addColorStop(.68,color+"28"); halo.addColorStop(1,color+"00");
       ctx.fillStyle=halo; ctx.fillRect(0,0,96,96);
       if (swap) {
-        const a=t*Math.PI*1.4;
-        for (let k=0;k<2;k++) {
-          const phase=a+k*Math.PI, ink=k?accent:color;
-          ctx.strokeStyle=ink; ctx.lineWidth=2;
-          ctx.beginPath(); ctx.ellipse(48,48,31,17,0,phase-1.8,phase); ctx.stroke();
-          card(Math.round(48+31*Math.cos(phase)),Math.round(48+17*Math.sin(phase)),ink);
+        const radius = 23 + (1 - close) * 13 + t * 6;
+        for (let k = 0; k < 2; k++) {
+          const angle = k * Math.PI + close * 2.4 + t * .8;
+          for (let j = 0; j < 22; j++) {
+            const arc = angle - (21 - j) * .075;
+            ctx.fillStyle = j > 16 ? accent : j > 7 ? color : "#a56a30";
+            ctx.fillRect(Math.round(48 + radius * orbitWidth * Math.cos(arc)), Math.round(48 + radius * Math.sin(arc)), 2, 2);
+          }
+          ctx.save();
+          ctx.translate(Math.round(49 + radius * orbitWidth * Math.cos(angle)), Math.round(49 + radius * Math.sin(angle)));
+          ctx.rotate(Math.atan2(Math.cos(angle), -orbitWidth * Math.sin(angle)));
+          icon("arrow", accent, 0, 0, 9);
+          ctx.restore();
         }
       } else if (id === "turn-control") {
         for (const slope of [-1,1]) {
@@ -131,7 +159,7 @@ const BattleEffects = (() => {
       }
       for(let j=0;j<8;j++) {
         const a=j*Math.PI/4+.18, r=25+t*20;
-        icon("crystal",j%2?color:accent,48+r*Math.cos(a),48+r*Math.sin(a),Math.round(2+pulse*3));
+        icon(swap ? "glint" : "crystal",j%2?color:accent,48+r*orbitWidth*Math.cos(a),48+r*Math.sin(a),Math.round(2+pulse*(swap ? 6 : 3)));
       }
       requestAnimationFrame(frame);
     }
@@ -144,8 +172,21 @@ const BattleEffects = (() => {
     const start = center(document.getElementById(caster.toLowerCase() + "Slot").closest(".slot"));
     for (const target of targets) {
       const panel = document.getElementById(target.toLowerCase() + "Temp").closest(".player");
-      if (["swap","turn-control","recovery-lock","fever"].includes(id)) signature(id, panel);
-      const end = center(panel.querySelector(".pilot"));
+      let anchor = panel.querySelector(".pilot");
+      if (id === "swap") {
+        const preview = panel.querySelector(".preview .mini-card");
+        const art = preview.querySelector(".preview-swap-art") ?? preview;
+        const [, y] = center(art);
+        const bounds = panel.getBoundingClientRect();
+        if (y > Math.max(0, bounds.top) && y < Math.min(innerHeight, bounds.bottom)) anchor = art;
+      }
+      if (["swap","turn-control","recovery-lock","fever"].includes(id)) signature(id, anchor, panel);
+      const end = center(anchor);
+      if (id === "swap") {
+        exchangeFlight(start, end);
+        continue;
+      }
+      const radius = Math.min(65,panel.clientWidth*.36);
       for (let i = 0; i < 12; i++) {
         const impact = i >= 6;
         const angle = i * Math.PI / 3;
@@ -162,7 +203,6 @@ const BattleEffects = (() => {
         const gust = first === "wind" || id === "cooling-spray";
         const liquid = first === "drop" || first === "ring";
         const middleY = (start[1]+end[1])/2 + (gust ? (i-3)*4 : liquid ? -70 : -45+i*6);
-        const radius = Math.min(65,panel.clientWidth*.36);
         let dx = Math.cos(angle)*radius, dy = Math.sin(angle)*radius;
         if (airborne) { dx = (i-8.5)*9; dy = -radius*(.65+(i%3)*.18); }
         else if (gust) { dx = (end[0]>=start[0]?1:-1)*radius*.8; dy=(i-8.5)*10; }
@@ -183,19 +223,87 @@ const BattleEffects = (() => {
   }
   return {cast, clear: () => layer.replaceChildren()};
 })();
-{
-  const snow = document.getElementById("snow");
-  const flakes = document.createDocumentFragment();
-  for (let i = 0; i < 108; i++) {
-    const flake = document.createElement("i");
-    const depth = i % 3;
-    flake.style.setProperty("--size", (1.5 + depth * 1.4) + "px");
-    flake.style.setProperty("--alpha", .36 + depth * .22);
-    flake.style.setProperty("--speed", (2.1 - depth * .46) + "s");
-    flake.style.setProperty("--delay", -(i * .373 % 2.1) + "s");
-    flake.style.setProperty("--x", ((i * 61.803 % 100) * 1.1 - 5) + "%");
-    flake.style.setProperty("--y", ((i * 43.117 % 100) * 1.1 - 5) + "%");
-    flakes.append(flake);
+const Snowfall = (() => {
+  const layer = document.getElementById("snow");
+  const canvas = layer.querySelector("canvas");
+  const ctx = canvas.getContext("2d");
+  const motion = matchMedia("(prefers-reduced-motion: reduce)");
+  const { stormDuration } = GameRules.SETTINGS;
+  const frameInterval = 1000 / 60;
+  const flakes = Array.from({ length: 108 }, (_, index) => {
+    const depth = index % 3;
+    return {
+      depth,
+      x: (index * 0.61803) % 1,
+      y: (index * 0.43117) % 1,
+      phase: (index * 0.373) % 2.1,
+      speed: 2.1 - depth * 0.46,
+    };
+  });
+  let sprites;
+  let active = false;
+  let frame = 0;
+  let started = 0;
+  let nextDraw = 0;
+
+  function snowSprite(depth) {
+    const streak = document.createElement("canvas");
+    streak.width = 5 + depth * 3;
+    streak.height = 3 + depth;
+    const pen = streak.getContext("2d");
+    pen.fillStyle = "#c0e6ff";
+    pen.fillRect(0, 0, streak.width - 2, 1);
+    pen.fillRect(1, 1, streak.width - 1, 1);
+    pen.fillStyle = "#ecfaff";
+    pen.fillRect(streak.width - 3, 1, 2, streak.height - 1);
+    return streak;
   }
-  snow.append(flakes);
-}
+
+  function draw(now) {
+    frame = 0;
+    if (!active || motion.matches || now - started >= stormDuration) return;
+    if (now >= nextDraw) {
+      // Cap pixel fill on high-DPI displays and keep particle positions viewport-relative.
+      const scale = Math.min(0.75, 1440 / innerWidth, 810 / innerHeight);
+      const width = Math.max(1, Math.round(innerWidth * scale));
+      const height = Math.max(1, Math.round(innerHeight * scale));
+      if (canvas.width !== width) canvas.width = width;
+      if (canvas.height !== height) canvas.height = height;
+      sprites ??= [0, 1, 2].map(snowSprite);
+      ctx.clearRect(0, 0, width, height);
+      const time = (now - started) / 1000;
+      for (const flake of flakes) {
+        const progress = ((time + flake.phase) / flake.speed) % 1;
+        const drift = progress - 0.5;
+        const x = Math.round((flake.x + drift * 0.47) * width);
+        const y = Math.round((flake.y + drift * 0.22) * height);
+        ctx.globalAlpha = (0.36 + flake.depth * 0.22) * Math.min(1, progress / 0.18, (1 - progress) / 0.18);
+        ctx.drawImage(sprites[flake.depth], x, y);
+      }
+      // Keep the target rate without redrawing on every high-refresh display frame.
+      nextDraw = Math.max(nextDraw + frameInterval, now);
+    }
+    frame = requestAnimationFrame(draw);
+  }
+
+  function update(show, elapsedMs = 0) {
+    if (active === show) return;
+    active = show;
+    layer.style.animationDelay = show ? -elapsedMs + "ms" : "";
+    layer.classList.toggle("active", show);
+    if (show) {
+      started = performance.now() - elapsedMs;
+      nextDraw = started;
+      if (!motion.matches && ctx) frame = requestAnimationFrame(draw);
+    } else {
+      cancelAnimationFrame(frame);
+      frame = 0;
+      canvas.width = canvas.height = 1;
+    }
+  }
+
+  motion.addEventListener("change", () => {
+    if (active && !motion.matches && ctx && !frame) frame = requestAnimationFrame(draw);
+  });
+  return { update };
+})();

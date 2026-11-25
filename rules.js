@@ -28,6 +28,8 @@ const GameRules = (() => {
     minHealingMultiplier: 0.5,
   });
 
+  const emotes = Object.freeze(["wave", "nice", "cold", "fire", "laugh", "dislike"]);
+
   const cards = [
     { id: "hot-chocolate", name: "핫초코", type: "체온 상승", target: "self", temp: 1.5 },
     { id: "roasted-chestnuts", name: "군밤", type: "체온 상승", target: "self", temp: 1.5 },
@@ -57,7 +59,7 @@ const GameRules = (() => {
     { id: "electric-fan", name: "선풍기", type: "효과", target: "opponent", status: "선풍기", periodic: -1, turns: 3, copies: 2, desc: "다음 상대 차례부터 3회, 차례 시작 시 -1°C" },
     { id: "frostbite-patch", name: "파스", type: "효과", target: "opponent", status: "동상", turns: 2, desc: "상대에게 동상 2턴" },
     { id: "clothing-damage", name: "옷 파손 아이템", type: "효과", target: "opponent", status: "옷 파손", turns: 2, desc: "상대에게 옷 파손 2턴" },
-    { id: "swap", name: "교체 카드", type: "스페셜", target: "self", free: true, copies: 1, desc: "다음 카드 후보를 덱 뒤로 보내고 행동 소모 없이 다시 뽑습니다. 자폭·복불복·교체 카드와 즉시 회복량이 1.5°C 이하이거나 과열을 일으키거나 현재 사용할 수 없는 카드는 제외합니다." },
+    { id: "swap", name: "교체 카드", type: "스페셜", target: "self", free: true, copies: 1, desc: "행동 소모 없이 다음 카드를 교체합니다. 새 카드는 다음에 뽑을 때 손패에 들어옵니다. 자폭·복불복·교체 카드와 즉시 회복량이 1.5°C 이하이거나 과열을 일으키거나 현재 사용할 수 없는 카드는 제외합니다." },
     { id: "turn-control", name: "상대 턴 통제 카드", type: "스페셜", target: "opponent", status: "행동 제한", turns: 1, copies: 1, desc: "상대의 다음 차례 행동 횟수 2회 → 1회" },
     { id: "recovery-lock", name: "회복 제한 카드", type: "스페셜", target: "opponent", status: "회복 제한", turns: 1, copies: 1, desc: "상대의 다음 차례에 회복 카드 사용 불가" },
     { id: "fever", name: "강화 디버프 카드", type: "스페셜", target: "opponent", status: "몸살", turns: 1, copies: 1, desc: "상대에게 몸살 1턴" },
@@ -134,8 +136,12 @@ const GameRules = (() => {
     return best;
   }
 
+  function nextDrawIndex(player, slot) {
+    return player.nextDrawReserved ? 0 : drawCandidate(player, slot);
+  }
+
   function swapCandidates(player, slot) {
-    const previous = drawCandidate(player, slot);
+    const previous = nextDrawIndex(player, player.hand.indexOf(null));
     if (previous === undefined) return { previous, replacement: undefined };
     const skipped = player.deck[previous];
     const replacement = drawCandidate(player, slot, card => {
@@ -200,7 +206,7 @@ const GameRules = (() => {
         name, isAI: name === aiPlayer,
         temp: SETTINGS.startTemp,
         deck: shuffle(deck, random),
-        discard: [], hand: Array(SETTINGS.handSize).fill(null), statuses: [],
+        discard: [], hand: Array(SETTINGS.handSize).fill(null), nextDrawReserved: false, statuses: [],
         turnsTaken: 0, actionsUsed: 0, usedThisTurn: [], pending: null,
       }));
       this.turn = 0;
@@ -279,17 +285,14 @@ const GameRules = (() => {
       }
     }
 
-    drawInto(player, slot, swap = null) {
+    drawInto(player, slot) {
       this.recycle(player);
-      const index = swap?.replacement ?? drawCandidate(player, slot);
+      const fromSwap = player.nextDrawReserved;
+      const index = nextDrawIndex(player, slot);
       const card = index === undefined ? null : player.deck.splice(index, 1)[0];
       player.hand[slot] = card;
-      if (swap) {
-        const movedIndex = index < swap.previous ? swap.previous - 1 : swap.previous;
-        const [previous] = player.deck.splice(movedIndex, 1);
-        player.deck.push(previous);
-        this.emit("swap", { player, exchanged: true, previousCard: previous.id, replacementCard: card.id });
-      }
+      player.nextDrawReserved = false;
+      if (card && player.turnsTaken) this.emit("draw", { player, card, index: slot, fromSwap });
       return card;
     }
 
@@ -299,8 +302,8 @@ const GameRules = (() => {
     }
 
     preview(player) {
-      const slot = player.pending?.index ?? player.hand.indexOf(null);
-      return player.deck[drawCandidate(player, slot)] ?? null;
+      const slot = player.pending && player.pending.card.id !== "swap" ? player.pending.index : player.hand.indexOf(null);
+      return player.deck[nextDrawIndex(player, slot)] ?? null;
     }
 
     playableIndices(player = this.currentPlayer) {
@@ -336,10 +339,19 @@ const GameRules = (() => {
       if (!card.free) player.actionsUsed++;
       this.emit("card", { player, card });
       this.applyCard(player, card);
-      const drawn = this.drawInto(player, index, swap);
+      if (swap) {
+        const replacementIndex = swap.previous < swap.replacement ? swap.replacement - 1 : swap.replacement;
+        const [previous] = player.deck.splice(swap.previous, 1);
+        const [replacement] = player.deck.splice(replacementIndex, 1);
+        player.deck.unshift(replacement);
+        player.deck.push(previous);
+        player.nextDrawReserved = true;
+        this.emit("swap", { player, exchanged: true, previousCard: previous.id, replacementCard: replacement.id });
+      } else {
+        this.drawInto(player, index);
+      }
       player.discard.push(card);
       this.recycle(player);
-      if (drawn) this.emit("draw", { player, card: drawn, index });
       this.checkResult();
 
       if (!this.gameOver && player.actionsUsed >= maxActions(player)) this.finishTurn();
@@ -606,7 +618,7 @@ const GameRules = (() => {
     return best;
   }
 
-  return { SETTINGS, cards: Object.freeze(cards), Match, maxActions, hasStatus, isDebuff, isBuff,
+  return { SETTINGS, emotes, cards: Object.freeze(cards), Match, maxActions, hasStatus, isDebuff, isBuff,
     legalCard, temperatureDelta, blizzardDamage, stormPhaseMs, chooseCard, scoreCard };
 })();
 
