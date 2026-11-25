@@ -11,7 +11,7 @@ let match = null;
 let turnTimer = null;
 let endingTimer = null;
 let deadline = 0;
-let drawnSlot = null;
+let lastDraw = null;
 let handOwner = null;
 const handSlots = [];
 let hoveredCard = null;
@@ -153,7 +153,13 @@ function handleEvent(event, live = true) {
       }
       break;
     case "draw":
-      if (live && !player.isAI) drawnSlot = event.index;
+      if (live && !player.isAI) {
+        lastDraw = event;
+        if (event.fromSwap) {
+          queuedSwaps.delete(player.name);
+          get(playerPrefix(player) + "Next").querySelector(".preview-swap")?.remove();
+        }
+      }
       break;
     case "temperature": {
       const sign = event.delta > 0 ? "+" : "";
@@ -315,7 +321,7 @@ function resetMatch() {
   for (const id of ["p1Slot", "p2Slot"]) slotLayouts.delete(get(id));
   document.querySelectorAll(".rh-shake").forEach(panel => panel.classList.remove("rh-shake"));
   hideEndingScene();
-  drawnSlot = null;
+  lastDraw = null;
   handOwner = null;
   hoveredCard = null;
   match = null;
@@ -596,6 +602,8 @@ function remainingActions(player) {
 
 function renderHand(player) {
   const hand = get("hand");
+  const draw = lastDraw?.player.name === player.name ? lastDraw : null;
+  lastDraw = null;
   const active = ownsTurn();
   const owner = player.isAI ? "AI" : player.name;
   if (handOwner !== owner) {
@@ -627,7 +635,7 @@ function renderHand(player) {
     const reason = match.gameOver ? "게임 종료" : !active ? "상대 차례"
       : pending ? "카드 대기중" : player.pending ? "배치한 카드를 확정하거나 취소하세요." : legalCard(player, card);
     const enabled = !reason;
-    if (previous?.card === card && previous.pending === pending && drawnSlot !== index) {
+    if (previous?.card === card && previous.pending === pending && draw?.index !== index) {
       if (previous.enabled !== enabled) {
         setCardEnabled(previous.shell, enabled);
         previous.enabled = enabled;
@@ -638,9 +646,10 @@ function renderHand(player) {
     const shell = document.createElement("div");
     shell.className = "card-shell asset-skin";
     shell.dataset.handIndex = index;
-    if (drawnSlot === index) {
+    shell.style.gridColumn = String(index + 1);
+    if (draw?.index === index && draw.card?.id === card.id) {
       shell.classList.add("flip-enter");
-      if (!pending && queuedSwaps.get(player.name)?.replacementCard === card.id) shell.classList.add("swap-draw");
+      if (!pending && draw.fromSwap) shell.classList.add("swap-draw");
     }
     shell.setAttribute("role", "button");
     setCardEnabled(shell, enabled);
@@ -689,7 +698,6 @@ function renderHand(player) {
     else hand.insertBefore(shell, handSlots.slice(index + 1).find(Boolean)?.shell ?? null);
     handSlots[index] = { card, pending, enabled, reason, shell };
   }
-  drawnSlot = null;
 }
 
 function setCardEnabled(shell, enabled) {
@@ -795,7 +803,7 @@ function showPreviewSwap(player, event) {
   const name = document.createElement("strong");
   const destination = document.createElement("small");
   setText(name, replacement.name);
-  setText(destination, "교체 완료 · 손패에 추가");
+  setText(destination, "교체 완료 · 다음에 뽑을 카드");
   detail.append(name, destination);
   effect.append(art, detail);
   preview.append(effect);

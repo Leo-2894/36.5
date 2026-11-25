@@ -4505,7 +4505,7 @@ body.is-dragging-card .field .slot.drop-ready {
   #snow.active canvas {display:none}
 }
 
-/* The swap receipt shows the card entering the hand over the normal preview. */
+/* Reveal the reserved card over its persistent next-draw preview. */
 .preview .mini-card { position: relative; }
 .preview-swap {
   position: absolute;
@@ -4593,7 +4593,7 @@ body.is-dragging-card .field .slot.drop-ready {
   22% { opacity: 1; }
   100% { opacity: 0; background-position: 0% 50%; }
 }
-@keyframes preview-swap-panel { 0%, 100% { opacity: 0; } 9%, 85% { opacity: 1; } }
+@keyframes preview-swap-panel { 0%, 85% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes preview-card-out {
   from { opacity: 1; transform: none; }
   to { opacity: 0; transform: perspective(180px) translate(-20%, -8%) rotate(-12deg) rotateY(-78deg); }

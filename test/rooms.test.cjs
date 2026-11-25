@@ -128,6 +128,30 @@ test("an opponent receives no hand, pending placement, preview, draw or deck ord
   assert.equal(read(guest).events.some(event => event.type === "draw"), true);
 });
 
+test("a guest's swapped preview survives a fresh snapshot until their next draw", () => {
+  const { rooms, host, code, read, action, start } = setUp();
+  const guest = start();
+  const player = rooms.items.get(code).match.p2;
+  const byId = id => cards.find(card => card.id === id);
+  player.hand = ["swap", "mint-candy", "fan", "ice-cream"].map(byId);
+  player.deck = ["ice-bottle", "water-gun", "shaved-ice"].map(byId);
+  action(guest, "stage", { index: 0 });
+  const swapped = action(guest, "confirm");
+  assert.equal(swapped.players[1].preview, "shaved-ice");
+  assert.equal(swapped.players[1].hand[0], null);
+  assert.equal(swapped.events.some(e => e.type === "draw"), false);
+  assert.equal(read(guest).players[1].preview, "shaved-ice");
+  const opponent = read(host);
+  assert.equal(Object.hasOwn(opponent.players[1], "preview"), false);
+  assert.equal(opponent.events.some(e => e.type === "swap"), false);
+  action(guest, "stage", { index: 1 });
+  const drawn = action(guest, "confirm");
+  assert.equal(drawn.players[1].hand[1], "shaved-ice");
+  assert.equal(drawn.players[1].preview, "water-gun");
+  assert.equal(drawn.events.find(e => e.type === "draw").fromSwap, true);
+  assert.equal(read(host).events.some(e => e.type === "draw"), false);
+});
+
 test("the host cannot control the guest turn or replay stale action revisions", () => {
   const { rooms, host, code, read, action, start } = setUp();
   const guest = start();
