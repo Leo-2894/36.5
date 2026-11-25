@@ -139,6 +139,7 @@ test("a guest's swapped preview survives a fresh snapshot until their next draw"
   const swapped = action(guest, "confirm");
   assert.equal(swapped.players[1].preview, "shaved-ice");
   assert.equal(swapped.players[1].hand[0], null);
+  assert.deepEqual(player.deck.map(card => card.id), ["shaved-ice", "water-gun", "ice-bottle"]);
   assert.equal(swapped.events.some(e => e.type === "draw"), false);
   assert.equal(read(guest).players[1].preview, "shaved-ice");
   const opponent = read(host);
@@ -148,6 +149,7 @@ test("a guest's swapped preview survives a fresh snapshot until their next draw"
   const drawn = action(guest, "confirm");
   assert.equal(drawn.players[1].hand[1], "shaved-ice");
   assert.equal(drawn.players[1].preview, "water-gun");
+  assert.deepEqual(player.deck.map(card => card.id), ["water-gun", "ice-bottle"]);
   assert.equal(drawn.events.find(e => e.type === "draw").fromSwap, true);
   assert.equal(read(host).events.some(e => e.type === "draw"), false);
 });

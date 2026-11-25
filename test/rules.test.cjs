@@ -181,22 +181,21 @@ test('expiry confirms the selected card, chooses a legal unselected card, or pas
   assert.equal(blocked.p1.actionsUsed, 0);
 });
 
-test('swap changes only the preview and the next confirmed draw receives that card once', () => {
+test('swap moves the new card to the top of the deck until the next draw', () => {
   const { match, events } = start();
   match.p1.hand = [card('swap'), card('steamed-bun'), card('mint-candy'), card('heat-pack')];
   match.p1.deck = ['mint-candy', 'ice-pack', 'ice-bottle', 'half-and-half', 'hot-chocolate', 'udon', 'tylenol', 'cooling-spray'].map(card);
   match.p1.temp = 37.5;
   const otherCards = match.p1.hand.slice(1);
-  const initialDeckSize = match.p1.deck.length;
+  const reorderedDeck = ['cooling-spray', 'mint-candy', 'ice-bottle', 'half-and-half', 'hot-chocolate', 'udon', 'tylenol', 'ice-pack'].map(card);
   assert.equal(match.canSwap(match.p1), true);
   assert.equal(match.stage(0), true);
   assert.equal(match.preview(match.p1).id, 'ice-pack');
   match.confirm();
   assert.deepEqual(match.p1.hand, [null, ...otherCards]);
   assert.deepEqual(match.p1.discard, [card('swap')]);
-  assert.equal(match.p1.deck.length, initialDeckSize);
+  assert.deepEqual(match.p1.deck, reorderedDeck);
   assert.equal(events.some(event => event.type === 'draw'), false);
-  assert.equal(match.p1.deck.at(-1).id, 'ice-pack');
   assert.equal(match.p1.actionsUsed, 0);
   const event = events.find(item => item.type === 'swap');
   assert.equal(event.previousCard, 'ice-pack');
@@ -209,11 +208,27 @@ test('swap changes only the preview and the next confirmed draw receives that ca
   assert.equal(match.preview(match.p1).id, 'cooling-spray');
   match.confirm();
   assert.equal(match.p1.hand[1].id, 'cooling-spray');
-  assert.equal(match.p1.deck.length, initialDeckSize - 1);
+  assert.deepEqual(match.p1.deck, reorderedDeck.slice(1));
   const draws = events.filter(event => event.type === 'draw');
   assert.equal(draws.length, 1);
   assert.equal(draws[0].fromSwap, true);
   assert.equal(match.preview(match.p1).id, 'ice-bottle');
+});
+
+test('swap can promote a card already ahead of the previous candidate without changing the other cards', () => {
+  const { match } = start();
+  const owner = match.p1;
+  owner.hand = ['swap', 'mint-candy', 'fan', 'ice-cream'].map(card);
+  owner.deck = ['mint-candy', 'ice-bottle', 'water-gun', 'hot-chocolate'].map(card);
+  assert.equal(match.preview(owner).id, 'ice-bottle');
+  assert.equal(match.stage(0), true);
+  match.confirm();
+  assert.deepEqual(owner.deck.map(c => c.id), ['mint-candy', 'water-gun', 'hot-chocolate', 'ice-bottle']);
+  assert.equal(match.preview(owner).id, 'mint-candy');
+  assert.equal(match.stage(2), true);
+  match.confirm();
+  assert.equal(owner.hand[2].id, 'mint-candy');
+  assert.deepEqual(owner.deck.map(c => c.id), ['water-gun', 'hot-chocolate', 'ice-bottle']);
 });
 
 test('a staged swap preserves the visible candidate and passing delivers the reservation at next turn refill', () => {
