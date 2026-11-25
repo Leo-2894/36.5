@@ -137,7 +137,7 @@ const GameRules = (() => {
   }
 
   function nextDrawIndex(player, slot) {
-    return player.reservedDraw ? player.deck.indexOf(player.reservedDraw) : drawCandidate(player, slot);
+    return player.nextDrawReserved ? 0 : drawCandidate(player, slot);
   }
 
   function swapCandidates(player, slot) {
@@ -206,7 +206,7 @@ const GameRules = (() => {
         name, isAI: name === aiPlayer,
         temp: SETTINGS.startTemp,
         deck: shuffle(deck, random),
-        discard: [], hand: Array(SETTINGS.handSize).fill(null), reservedDraw: null, statuses: [],
+        discard: [], hand: Array(SETTINGS.handSize).fill(null), nextDrawReserved: false, statuses: [],
         turnsTaken: 0, actionsUsed: 0, usedThisTurn: [], pending: null,
       }));
       this.turn = 0;
@@ -287,11 +287,11 @@ const GameRules = (() => {
 
     drawInto(player, slot) {
       this.recycle(player);
-      const fromSwap = Boolean(player.reservedDraw);
+      const fromSwap = player.nextDrawReserved;
       const index = nextDrawIndex(player, slot);
       const card = index === undefined ? null : player.deck.splice(index, 1)[0];
       player.hand[slot] = card;
-      player.reservedDraw = null;
+      player.nextDrawReserved = false;
       if (card && player.turnsTaken) this.emit("draw", { player, card, index: slot, fromSwap });
       return card;
     }
@@ -340,10 +340,13 @@ const GameRules = (() => {
       this.emit("card", { player, card });
       this.applyCard(player, card);
       if (swap) {
-        player.reservedDraw = player.deck[swap.replacement];
+        const replacementIndex = swap.previous < swap.replacement ? swap.replacement - 1 : swap.replacement;
         const [previous] = player.deck.splice(swap.previous, 1);
+        const [replacement] = player.deck.splice(replacementIndex, 1);
+        player.deck.unshift(replacement);
         player.deck.push(previous);
-        this.emit("swap", { player, exchanged: true, previousCard: previous.id, replacementCard: player.reservedDraw.id });
+        player.nextDrawReserved = true;
+        this.emit("swap", { player, exchanged: true, previousCard: previous.id, replacementCard: replacement.id });
       } else {
         this.drawInto(player, index);
       }
