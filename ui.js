@@ -327,7 +327,7 @@ function resetMatch() {
   match = null;
 }
 
-function revealBoard() {
+function revealBoard({ music = true } = {}) {
   get("rulesScreen").classList.remove("show");
   get("startMenu").classList.add("hidden");
   document.body.classList.remove("game-not-started");
@@ -335,7 +335,13 @@ function revealBoard() {
   get("log").replaceChildren();
   logEntries.length = 0;
   logNeedsScroll = false;
-  startBgm();
+  if (music) startBgm();
+}
+
+if (location.protocol === "file:" && location.hash === "#card-effects-preview" && window.parent !== window) {
+  const previewScript = document.createElement("script");
+  previewScript.src = "card-effects-review.js";
+  document.head.append(previewScript);
 }
 
 function startMatch() {

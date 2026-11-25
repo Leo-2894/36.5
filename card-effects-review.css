@@ -1,0 +1,215 @@
+.fx-review {
+  --background: #0b1018;
+  --panel: #141e2a;
+  --line: #2a394a;
+  --text: #edf4fb;
+  --muted: #a4b6ca;
+  --accent: #ffd58d;
+  margin: 0;
+  min-height: 100vh;
+  color-scheme: dark;
+  color: var(--text);
+  background: radial-gradient(ellipse at 18% 0%, #1c3142 0, transparent 480px), var(--background);
+  font-family: "Inter", "Malgun Gothic", system-ui, sans-serif;
+}
+
+.fx-review *, .fx-review *::before, .fx-review *::after { box-sizing: border-box; }
+.fx-review [hidden] { display: none !important; }
+.fx-review main { width: min(100% - 48px, 1320px); margin: auto; padding: 30px 0 48px; }
+.review-heading { margin-bottom: 22px; }
+.review-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.review-brand b {
+  padding: 4px 8px;
+  color: var(--accent);
+  border: 1px solid #735c42;
+  border-radius: 6px;
+  background: #2b2928;
+  font: 700 13px/1 "IBM Plex Mono", monospace;
+}
+.review-heading h1 { margin: 0; font-size: clamp(27px, 4vw, 42px); letter-spacing: -.045em; line-height: 1.18; }
+.review-intro { margin: 7px 0 0; color: var(--muted); font-size: 14px; }
+.review-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; }
+.review-monitor, .review-controls, .review-collection {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+}
+.review-monitor { overflow: hidden; }
+.review-panel-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 47px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--line);
+}
+.review-panel-title h2, .collection-heading h2 { margin: 0; font-size: 16px; }
+.monitor-state { color: var(--muted); font-size: 12px; }
+.monitor-state::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: #9bdfc5; }
+#effectStage { display: block; width: 100%; height: 385px; border: 0; background: #0b121a; }
+.review-controls { display: flex; flex-direction: column; padding: 17px; }
+.selected-card { display: flex; align-items: center; gap: 12px; }
+.selected-card img, .catalog-card img {
+  display: block;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+.selected-card img { flex: none; }
+.selected-card h2 { margin: 5px 0 0; font-size: clamp(19px, 2vw, 23px); line-height: 1.25; word-break: keep-all; }
+#selectedType { color: var(--type-color, var(--accent)); font-size: 12px; font-weight: 750; }
+#selectedDescription { margin: 14px 0 16px; color: #d2ddeb; font-size: 13px; line-height: 1.55; word-break: keep-all; overflow-wrap: anywhere; }
+.review-options { display: grid; gap: 6px; }
+.review-options label, .card-search span { color: var(--muted); font-size: 12px; font-weight: 700; }
+.fx-review select, .fx-review input[type="search"] {
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 9px;
+  border: 1px solid #3c4e62;
+  border-radius: 7px;
+  background: #0d151f;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+#outcomeLabel, .status-option { margin-top: 5px; }
+.status-option { display: flex; align-items: center; gap: 6px; }
+.status-option input { accent-color: var(--accent); }
+.review-actions { display: grid; grid-template-columns: 1fr auto; gap: 7px; margin-top: auto; padding-top: 16px; }
+.fx-review button {
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid #3c4e62;
+  border-radius: 7px;
+  background: #1a2938;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+}
+.fx-review button:disabled { cursor: wait; opacity: .5; }
+.fx-review button:focus-visible, .fx-review input:focus-visible, .fx-review select:focus-visible {
+  outline: 2px solid #cceeff;
+  outline-offset: 2px;
+}
+#playEffect { border-color: #ffe3ae; background: #ffd58d; color: #261c14; }
+#playEffect:not(:disabled):hover { background: #ffe8ba; }
+.review-collection { margin-top: 16px; padding: 17px; }
+.collection-heading { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 13px; }
+#cardCount { margin-left: 6px; color: var(--muted); font-size: 12px; }
+.card-search { display: flex; align-items: center; gap: 9px; }
+.card-search span { white-space: nowrap; }
+.type-filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.type-filters button { min-height: 30px; border-color: var(--line); }
+.type-filters [aria-pressed="true"] { border-color: var(--type-color, #a5dbee); color: var(--type-color, #b5e5f7); background: #24394a; }
+.card-catalog { display: grid; grid-template-columns: repeat(auto-fill, minmax(113px, 1fr)); gap: 7px; }
+.fx-review .catalog-card {
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 7px;
+  min-height: 116px;
+  padding: 8px 4px 6px;
+  border-color: var(--line);
+  background: radial-gradient(ellipse at 50% 32%, #263746, #111a24 73%);
+  font-size: 12px;
+  line-height: 1.25;
+  word-break: keep-all;
+}
+.fx-review .catalog-card:hover { border-color: var(--type-color); }
+.fx-review .catalog-card[aria-pressed="true"] {
+  border-color: var(--type-color);
+  background: radial-gradient(ellipse at 50% 32%, color-mix(in srgb, var(--type-color) 24%, #20252a), #1a2430 82%);
+}
+.fx-review [data-type="체온 상승"] { --type-color: #ffc083; }
+.fx-review [data-type="체온 저하"] { --type-color: #8de0f7; }
+.fx-review [data-type="복불복"] { --type-color: #d0b6fa; }
+.fx-review [data-type="자폭"] { --type-color: #ffaaac; }
+.fx-review [data-type="효과"] { --type-color: #9ae9c6; }
+.fx-review [data-type="스페셜"] { --type-color: #ffd58d; }
+#emptyCards { margin: 24px 0; color: var(--muted); text-align: center; }
+
+@media (max-width: 1000px) {
+  .review-workspace { grid-template-columns: 1fr; }
+  .review-controls { display: grid; grid-template-columns: 1fr 1fr; column-gap: 18px; }
+  .selected-card { grid-column: 1; }
+  #selectedDescription { grid-column: 1; }
+  .review-options { grid-column: 2; grid-row: 1 / span 2; align-content: start; }
+  .review-actions { grid-column: 1 / -1; }
+}
+@media (max-width: 540px) {
+  .fx-review main { width: calc(100% - 20px); padding-top: 15px; }
+  .review-workspace { display: flex; flex-direction: column; }
+  .review-controls { display: flex; order: -1; }
+  .selected-card img { width: 44px; height: 71px; }
+  .review-collection { padding: 11px; }
+  .card-catalog { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #effectStage { height: 402px; }
+}
+
+/* Use the actual game components in a board sized for the review monitor. */
+body.fx-preview-stage { min-width: 0 !important; min-height: 0 !important; }
+body.fx-preview-stage:not(.game-not-started) .wrap.fullscreen-game {
+  display: block !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 100dvh !important;
+  min-height: 0 !important;
+  padding: 8px !important;
+}
+.fx-preview-stage :is(.topbar, .phase, .hand-title, .card-details, .btns, .turn-info, .thermal-scale) { display: none !important; }
+.fx-preview-stage .game {
+  grid-template-columns: clamp(110px, 20%, 180px) minmax(0, 1fr) clamp(110px, 20%, 180px) !important;
+  grid-template-rows: minmax(0, 1fr) !important;
+  height: 100% !important;
+  gap: 8px !important;
+}
+.fx-preview-stage .game .center {
+  grid-column: 2;
+  grid-row: 1;
+  grid-template-rows: minmax(74px, .7fr) minmax(84px, 1fr) minmax(55px, .52fr) !important;
+  min-width: 0 !important;
+  padding: 8px !important;
+}
+.fx-preview-stage .game .player {
+  min-width: 0 !important;
+  padding: 9px !important;
+  border-radius: 12px !important;
+}
+.fx-preview-stage .game .player h2 { font-size: 16px !important; margin: 0 !important; }
+.fx-preview-stage .pilot { width: clamp(38px, 8vw, 62px); margin-top: 10px; }
+.fx-preview-stage .game .player .temp { font-size: clamp(21px, 3.5vw, 36px) !important; margin-top: 8px !important; }
+.fx-preview-stage .game .player .status-row { margin: 7px 0 !important; }
+.fx-preview-stage .preview-title { font-size: 11px !important; }
+.fx-preview-stage .preview { margin-top: 7px !important; }
+.fx-preview-stage .mini-card { font-size: 11px !important; padding: 4px !important; }
+.fx-preview-stage .preview .mini-card span > span { font-size: 9px; }
+.fx-preview-stage .game .field { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+.fx-preview-stage .slot-title { font-size: 11px !important; }
+.fx-preview-stage #hand.cards { grid-template-columns: minmax(0, 1fr) !important; }
+.fx-preview-stage #hand.cards > .card-shell { width: min(100%, 62cqh, 105px) !important; }
+.fx-preview-stage .game #log { height: 100% !important; margin: 0 !important; padding: 5px 8px !important; font-size: 11px; }
+.fx-preview-stage #p1Badge, .fx-preview-stage #p2Badge { display: none !important; }
+
+@media (max-width: 510px) {
+  .fx-preview-stage .game { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important; grid-template-rows: minmax(164px, 1fr) minmax(120px, .95fr) !important; }
+  .fx-preview-stage .game .center { grid-column: 1 / -1; grid-row: 1; grid-template-rows: minmax(69px, 1fr) minmax(52px, 1fr) minmax(32px, .55fr) !important; padding: 5px !important; gap: 4px !important; }
+  .fx-preview-stage .game .player { grid-row: 2; }
+  .fx-preview-stage .game .player .temp { margin-top: 3px !important; }
+  .fx-preview-stage .pilot { position: absolute; right: 8px; top: 6px; width: 34px; margin: 0; }
+  .fx-preview-stage .game .player .status-row { margin: 3px 0 !important; }
+  .fx-preview-stage .preview { margin-top: 3px !important; min-height: 0; }
+  .fx-preview-stage .preview-title { text-align: left; margin-bottom: 2px !important; }
+  .fx-preview-stage .preview .mini-card { min-height: 34px !important; }
+  .fx-preview-stage .preview .mini-card:has(img) { grid-template-columns: 19px minmax(0, 1fr); }
+}

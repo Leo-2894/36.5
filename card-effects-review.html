@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; frame-src 'self' file:; object-src 'none'">
+  <title>카드 이펙트 검수 · 36.5</title>
+  <link rel="stylesheet" href="card-effects-review.css">
+  <script src="rules.js" defer></script>
+  <script src="card-effects-review.js" defer></script>
+</head>
+<body class="fx-review">
+  <main>
+    <header class="review-heading">
+      <p class="review-brand"><b>36.5</b> 개발 도구</p>
+      <h1>카드 이펙트 검수</h1>
+      <p class="review-intro">카드를 골라 실제 게임의 사용 연출을 재생합니다.</p>
+    </header>
+
+    <div class="review-workspace">
+      <section class="review-monitor" aria-labelledby="monitorTitle">
+        <div class="review-panel-title">
+          <h2 id="monitorTitle">전투 화면</h2>
+          <span class="monitor-state" id="monitorState" role="status">불러오는 중</span>
+        </div>
+        <iframe id="effectStage" title="36.5 카드 이펙트 전투 미리보기"></iframe>
+      </section>
+
+      <section class="review-controls" aria-label="재생 설정">
+        <div class="selected-card">
+          <img id="selectedArt" width="62" height="100" alt="">
+          <div>
+            <span id="selectedType"></span>
+            <h2 id="selectedTitle"></h2>
+          </div>
+        </div>
+        <p id="selectedDescription"></p>
+        <div class="review-options">
+          <label for="caster">사용 플레이어</label>
+          <select id="caster">
+            <option value="P1">P1 · 왼쪽</option>
+            <option value="P2">P2 · 오른쪽</option>
+          </select>
+          <label for="outcome" id="outcomeLabel" hidden>확률 결과</label>
+          <select id="outcome" hidden></select>
+          <label class="status-option" id="statusOption" hidden>
+            <input type="checkbox" id="applyStatus" checked>
+            <span id="statusLabel"></span>
+          </label>
+        </div>
+        <div class="review-actions">
+          <button id="playEffect" type="button" disabled>▶ 이펙트 재생</button>
+          <button id="resetStage" type="button" disabled>초기화</button>
+        </div>
+      </section>
+    </div>
+
+    <section class="review-collection" aria-labelledby="collectionTitle">
+      <div class="collection-heading">
+        <h2 id="collectionTitle">카드 목록 <span id="cardCount"></span></h2>
+        <label class="card-search">
+          <span>카드 검색</span>
+          <input id="cardSearch" type="search" placeholder="카드 이름" autocomplete="off">
+        </label>
+      </div>
+      <div id="typeFilters" class="type-filters" role="group" aria-label="카드 유형"></div>
+      <p id="emptyCards" hidden>검색 조건에 맞는 카드가 없습니다.</p>
+      <div id="cardCatalog" class="card-catalog"></div>
+    </section>
+  </main>
+</body>
+</html>
