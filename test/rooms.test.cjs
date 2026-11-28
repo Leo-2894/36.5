@@ -94,7 +94,7 @@ test("one invitation seats two players and starts exactly once when both are rea
   assert.equal(shared.phase, "playing");
   assert.equal(shared.current, "P2");
   assert.equal(shared.starter, read(guest).starter);
-  assert.deepEqual(shared.players[0].statuses, [{ name: "후공 보너스", remaining: 1 }]);
+  assert.deepEqual(shared.players[0].statuses, [{ name: "후공 보호", remaining: 1 }, { name: "후공 보너스", remaining: 1 }]);
   assert.deepEqual(shared.players[1].statuses, []);
   assert.equal(shared.version, read(guest).version);
   assert.equal(read(host, shared.version), null);
@@ -122,7 +122,7 @@ test("an opponent receives no hand, pending placement, preview, draw or deck ord
 
   action(guest, "confirm");
   const hostView = read(host);
-  assert.equal(hostView.players[0].temp, 33);
+  assert.equal(hostView.players[0].temp, 34.5);
   assert.deepEqual(hostView.players[1].usedThisTurn, ["ice-pack"]);
   assert.equal(hostView.events.some(event => event.type === "draw"), false);
   assert.equal(read(guest).events.some(event => event.type === "draw"), true);
@@ -170,6 +170,27 @@ test("the host cannot control the guest turn or replay stale action revisions", 
   assert.equal(read(host).current, "P1");
 });
 
+test("trading a hand card uses the shown preview without leaking either card or resetting the clock", () => {
+  const { rooms, host, code, tick, read, action, start } = setUp();
+  const guest = start();
+  const player = rooms.items.get(code).match.p2;
+  const byId = id => cards.find(card => card.id === id);
+  player.hand = ["mint-candy", "ice-pack", "fan", "clothes"].map(byId);
+  player.deck = ["ice-pack", "udon", "heat-pack"].map(byId);
+  assert.throws(() => action(host, "exchange", { index: 1 }), { code: "OPPONENT_TURN" });
+  tick(3500);
+  const trade = action(guest, "exchange", { index: 1 });
+  assert.equal(trade.players[1].hand[1], "udon");
+  assert.equal(trade.players[1].handExchangeUsed, true);
+  assert.equal(trade.players[1].actionsUsed, 0);
+  assert.equal(trade.remainingMs, 11500);
+  assert.ok(trade.events.some(event => event.type === "draw" && event.card === "udon"));
+  const other = read(host);
+  assert.ok(!other.events.some(event => event.type === "draw"));
+  assert.ok(other.events.some(event => event.type === "handExchange" && !event.card));
+  assert.throws(() => action(guest, "exchange", { index: 0 }), { code: "INVALID_ACTION" });
+});
+
 test("staging leaves the timer intact and expiry confirms on the server", () => {
   const { rooms, host, code, tick, read, action, start } = setUp();
   const guest = start();
@@ -182,7 +203,7 @@ test("staging leaves the timer intact and expiry confirms on the server", () => 
   assert.equal(read(host).players[0].temp, 36.5);
   tick(1);
   const after = read(host);
-  assert.equal(after.players[0].temp, 33);
+  assert.equal(after.players[0].temp, 34.5);
   assert.equal(after.remainingMs, actionMs);
   assert.equal(after.events.find(event => event.type === "timeout").card, "ice-pack");
   assert.throws(() => action(guest, "confirm", {}, staged.actionVersion), { code: "STALE_ACTION" });
@@ -200,6 +221,58 @@ test("leaving a waiting room closes it and leaving a live game awards a forfeit 
   assert.equal(result.winner, "P1");
   assert.equal(result.remainingMs, null);
   assert.equal(result.events.at(-1).forfeited, "P2");
+  assert.equal(result.canRematch, false);
+});
+
+test("both players can opt in to a fresh match with the same room, credentials and event stream", async () => {
+  const { rooms, host, code, read, action, ready, start } = setUp();
+  const guest = start();
+  const playing = read(host);
+  const room = rooms.items.get(code);
+  room.match.p1.temp = 27;
+  room.match.p2.hand[0] = cards.find(card => card.id === "ice-pack");
+  action(guest, "stage", { index: 0 });
+  const ended = action(guest, "confirm");
+  assert.equal(ended.phase, "finished");
+  assert.equal(ended.canRematch, true);
+  assert.deepEqual(ended.ready, [false, false]);
+  assert.throws(() => ready(host, true, playing.lobbyId), { code: "STALE_ACTION" });
+
+  const cursor = ended.events.at(-1).id;
+  const update = rooms.watch(code, guest.token, ended.version, cursor, new AbortController().signal);
+  assert.deepEqual(ready(host).ready, [true, false]);
+  assert.deepEqual((await update).ready, [true, false]);
+  assert.deepEqual(ready(host, false).ready, [false, false]);
+  ready(guest);
+  const rematch = ready(host);
+  assert.equal(rematch.phase, "playing");
+  assert.equal(rematch.matchId, ended.matchId + 1);
+  assert.equal(rematch.code, code);
+  assert.equal(read(guest).side, "P2");
+  assert.deepEqual(rematch.players.map(p => p.temp), [36.5, 36.5]);
+  assert.equal(rematch.turn, 0);
+  assert.equal(rematch.remainingMs, SETTINGS.secondsPerAction * 1000);
+  assert.ok(rematch.events.every(event => event.id > cursor));
+  assert.ok(!rematch.events.some(event => event.type === "result"));
+  assert.throws(() => action(guest, "confirm", {}, ended.actionVersion), { code: "STALE_ACTION" });
+});
+
+test("a guest can leave after a result and the host keeps the original room", () => {
+  const { rooms, host, code, read, action, ready, start } = setUp();
+  const guest = start();
+  const room = rooms.items.get(code);
+  room.match.p1.temp = 27;
+  room.match.p2.hand[0] = cards.find(card => card.id === "ice-pack");
+  action(guest, "stage", { index: 0 });
+  action(guest, "confirm");
+  ready(host);
+  rooms.leave(code, guest.token);
+  assert.equal(read(host).phase, "waiting");
+  assert.throws(() => read(guest), { code: "UNAUTHORIZED" });
+  const next = rooms.join(code);
+  assert.deepEqual(next.state.ready, [false, false]);
+  start(next);
+  assert.equal(read(host).matchId, 2);
 });
 
 test("room watchers wake on updates, keep private events hidden and expire when idle", async () => {
@@ -221,7 +294,7 @@ test("room watchers wake on updates, keep private events hidden and expire when 
   const confirmed = rooms.watch(code, host.token, staged.version, cursor, signal);
   action(guest, "confirm");
   const update = await confirmed;
-  assert.equal(update.players[0].temp, 33);
+  assert.equal(update.players[0].temp, 34.5);
   assert.ok(update.events.some(event => event.card === "ice-pack"));
   assert.ok(update.events.every(event => event.id > cursor && event.type !== "draw"));
   assert.equal(read(host).version, update.version);
@@ -262,7 +335,7 @@ test("emotes are rate limited and do not invalidate card actions or reset the cl
   assert.throws(() => action(host, "emote", { emote: "nice" }), { code: "EMOTE_COOLDOWN" });
   assert.throws(() => action(guest, "emote", { emote: "custom" }), { code: "INVALID_ACTION" });
   action(guest, "confirm", {}, before.actionVersion);
-  assert.equal(read(host).players[0].temp, 33);
+  assert.equal(read(host).players[0].temp, 34.5);
   tick(1200);
   assert.equal(action(host, "emote", { emote: "laugh" }).events.at(-1).emote, "laugh");
   assert.equal(action(guest, "emote", { emote: "dislike" }).events.at(-1).emote, "dislike");

@@ -111,7 +111,7 @@
 #onlineLobby #chooseInternetMode { border-inline-start-color: #ffd189; }
 .lobby-modes strong { font-size: 16px; }
 .lobby-modes span { color: #c5d6e6; font-size: 13px; font-weight: 500; }
-#serverForm .lobby-row:has(#serverAddress) { grid-template-columns: minmax(0, 1fr); margin-bottom: 12px; }
+#serverForm .lobby-row { margin-bottom: 12px; }
 
 .lobby-host-help {
   margin: 8px 0 12px;
@@ -148,6 +148,9 @@
 .lobby-row input::placeholder { color: #a6b5c4; }
 #inviteCode, #serverCode { text-transform: uppercase; font-family: monospace; letter-spacing: .12em; }
 #inviteLink { font-size: 13px; }
+.rematch-status { margin: 12px 0; color: #c6d4e4; }
+.ending-panel [hidden] { display: none !important; }
+#rematchBtn[aria-pressed="true"] { color: #e2fff5; background: #204b43; }
 
 .lobby-waiting { margin: 0 0 17px; color: #c9d8e5; font-size: 14px; }
 

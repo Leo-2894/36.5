@@ -62,7 +62,7 @@ class Rooms {
     const token = randomBytes(24).toString("base64url");
     const room = {
       code, tokens: [token], ready: [false, false], lobbyId: 0,
-      match: null, version: 1, actionVersion: 0, lastEmote: [-Infinity, -Infinity], log: [],
+      match: null, matchId: 0, forfeited: null, version: 1, actionVersion: 0, lastEmote: [-Infinity, -Infinity], log: [],
       eventId: 0, timer: null, deadline: null, expiresAt: this.now() + waitLifetime, listeners: new Map(),
     };
     this.items.set(code, room);
@@ -105,7 +105,7 @@ class Rooms {
     const state = this.read(code, token, after, eventId);
     if (state || signal.aborted) return state;
     const { room, side } = this.authorize(code, token);
-    if (room.match?.gameOver || room.listeners.has(side)) return null;
+    if (room.listeners.has(side)) return null;
     await new Promise(resolve => {
       const complete = () => {
         this.unschedule(timer);
@@ -127,11 +127,13 @@ class Rooms {
 
   leave(code, token) {
     const { room, side } = this.authorize(code, token);
-    if (room.match) {
+    if (room.match && !room.match.gameOver) {
       if (room.match.forfeit(side === "P1" ? room.match.p1 : room.match.p2)) this.commit(room);
-    } else if (side === "P1") {
+    } else if (side === "P1" || room.forfeited === "P1") {
       this.drop(room);
     } else {
+      room.match = null;
+      room.forfeited = null;
       room.tokens.pop();
       room.lobbyId++;
       room.ready.fill(false);
@@ -143,21 +145,30 @@ class Rooms {
   setReady(room, side, command) {
     if (room.lobbyId !== command.lobbyId) throw new RoomError(409, "STALE_ACTION");
     if (typeof command.ready !== "boolean") throw new RoomError(400, "INVALID_ACTION");
-    if (room.match) {
+    if (room.match && !room.match.gameOver) {
       if (command.ready) return;
       throw new RoomError(409, "MATCH_UNAVAILABLE");
     }
-    if (room.tokens.length !== 2) throw new RoomError(409, "MATCH_UNAVAILABLE");
+    if (room.tokens.length !== 2 || room.forfeited) throw new RoomError(409, "MATCH_UNAVAILABLE");
 
     const seat = sideNames.indexOf(side);
     if (room.ready[seat] === command.ready) return;
     room.ready[seat] = command.ready;
-    if (room.ready.every(Boolean)) {
+    const start = room.ready.every(Boolean);
+    if (start) {
       room.expiresAt = this.now() + matchLifetime;
+      room.matchId++;
+      room.lastEmote.fill(-Infinity);
+      room.log = [];
       room.match = new Match({ aiPlayer: null, timedStorms: true, random: this.random, onEvent: event => this.record(room, event) });
       room.match.start();
     }
-    this.commit(room, Boolean(room.match));
+    if (room.match?.gameOver) {
+      room.version++;
+      this.notify(room);
+    } else {
+      this.commit(room, start);
+    }
   }
 
   sendEmote(room, side, emote) {
@@ -200,6 +211,9 @@ class Rooms {
       case "confirm":
         changed = match.confirm();
         break;
+      case "exchange":
+        changed = match.exchangeHand(command.index);
+        break;
       case "pass":
         if (!match.currentPlayer.pending) {
           this.record(room, { type: "pass", player: match.currentPlayer });
@@ -229,6 +243,8 @@ class Rooms {
     if (room.match.gameOver) {
       this.clearTimer(room);
       room.expiresAt = this.now() + resultLifetime;
+      room.lobbyId++;
+      room.ready.fill(false);
     } else if (resetClock) {
       this.clearTimer(room);
       const storm = room.match.storm;
@@ -255,6 +271,7 @@ class Rooms {
     if (player) entry.player = { name: player.name, temp: player.temp };
     if (card) entry.card = card.id;
     if (status) entry.status = { name: status.name, remaining: status.remaining };
+    if (type === "result") room.forfeited = event.forfeited ?? null;
     room.log.push(entry);
     if (room.log.length > 120) room.log.shift();
   }
@@ -272,7 +289,8 @@ class Rooms {
     return {
       ...state,
       phase: match.gameOver ? "finished" : "playing",
-      actionVersion: room.actionVersion,
+      actionVersion: room.actionVersion, matchId: room.matchId,
+      lobbyId: room.lobbyId, ready: [...room.ready], canRematch: match.gameOver && !room.forfeited,
       turn: match.turn, blizzardCount: match.blizzardCount, current: match.current,
       storm: match.gameOver ? null : match.storm,
       stormDamage: match.stormDamage,
@@ -288,6 +306,7 @@ class Rooms {
           ...(own && {
             hand: player.hand.map(card => card?.id ?? null),
             swapAvailable: match.canSwap(player),
+            handExchangeUsed: player.handExchangeUsed,
             pending: player.pending && { index: player.pending.index, card: player.pending.card.id },
             preview: hasStatus(player, "실명") ? null : match.preview(player)?.id ?? null,
           }),
