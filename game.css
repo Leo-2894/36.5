@@ -4069,6 +4069,16 @@ body:not(.game-not-started) .wrap {
   white-space: normal;
 }
 
+#handExchangeBtn[aria-pressed="true"] {
+  background: #204b43 !important;
+  border-color: #61cfab !important;
+}
+
+.choosing-exchange .card-shell[aria-disabled="false"] {
+  outline: 1px dashed #80dbb7;
+  outline-offset: 2px;
+}
+
 .cards .card-shell:focus-visible,
 button:focus-visible {
   outline: 2px solid #9cddff;

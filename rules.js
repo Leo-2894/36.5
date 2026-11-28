@@ -3,7 +3,8 @@
 const GameRules = (() => {
   const SETTINGS = Object.freeze({
     startTemp: 36.5,
-    openingCounterDamage: 2,
+    openingCounterDamage: 1.5,
+    openingProtection: 0.5,
     lossTemp: 25,
     overheatTemp: 40,
     overheatedTemp: 39.5,
@@ -75,7 +76,7 @@ const GameRules = (() => {
   reducedWaterGunDeck[deckTemplate.findIndex(card => card.id === "water-gun")] =
     cards.find(card => card.id === "iced-americano");
   const debuffs = new Set(["옷 파손", "동상", "몸살", "실명", "행동 제한", "회복 제한", "선풍기"]);
-  const buffs = new Set(["보온", "핫팩", "후공 보너스"]);
+  const buffs = new Set(["보온", "핫팩", "후공 보호", "후공 보너스"]);
 
   const isDebuff = name => debuffs.has(name);
   const isBuff = name => buffs.has(name);
@@ -166,6 +167,7 @@ const GameRules = (() => {
     let factor = 1;
     if (amount < 0) {
       if (hasStatus(player, "보온")) factor -= SETTINGS.insulation;
+      if (hasStatus(player, "후공 보호")) factor -= SETTINGS.openingProtection;
       if (hasStatus(player, "옷 파손")) factor += SETTINGS.tornClothes;
       if (hasStatus(player, "몸살")) factor += SETTINGS.feverDamage;
       factor = Math.min(factor, SETTINGS.maxDamageMultiplier);
@@ -206,7 +208,7 @@ const GameRules = (() => {
         name, isAI: name === aiPlayer,
         temp: SETTINGS.startTemp,
         deck: shuffle(deck, random),
-        discard: [], hand: Array(SETTINGS.handSize).fill(null), nextDrawReserved: false, statuses: [],
+        discard: [], hand: Array(SETTINGS.handSize).fill(null), nextDrawReserved: false, handExchangeUsed: false, statuses: [],
         turnsTaken: 0, actionsUsed: 0, usedThisTurn: [], pending: null,
       }));
       this.turn = 0;
@@ -233,12 +235,15 @@ const GameRules = (() => {
     start() {
       if (this.players.some(player => player.turnsTaken > 0)) return;
       this.emit("start", { player: this.currentPlayer });
-      this.applyStatus(this.opponentOf(this.currentPlayer), "후공 보너스", 1);
+      const second = this.opponentOf(this.currentPlayer);
+      this.applyStatus(second, "후공 보호", 1);
+      this.applyStatus(second, "후공 보너스", 1);
       this.beginTurn();
     }
 
     beginTurn() {
       const player = this.currentPlayer;
+      player.statuses = player.statuses.filter(status => status.name !== "후공 보호");
       player.turnsTaken++;
       player.actionsUsed = 0;
       player.usedThisTurn = [];
@@ -287,8 +292,11 @@ const GameRules = (() => {
 
     drawInto(player, slot) {
       this.recycle(player);
+      return this.deal(player, slot, nextDrawIndex(player, slot));
+    }
+
+    deal(player, slot, index) {
       const fromSwap = player.nextDrawReserved;
-      const index = nextDrawIndex(player, slot);
       const card = index === undefined ? null : player.deck.splice(index, 1)[0];
       player.hand[slot] = card;
       player.nextDrawReserved = false;
@@ -304,6 +312,21 @@ const GameRules = (() => {
     preview(player) {
       const slot = player.pending && player.pending.card.id !== "swap" ? player.pending.index : player.hand.indexOf(null);
       return player.deck[nextDrawIndex(player, slot)] ?? null;
+    }
+
+    exchangeHand(index) {
+      const player = this.currentPlayer;
+      const outgoing = player.hand[index];
+      if (this.gameOver || this.storm || !player.turnsTaken || player.pending || player.handExchangeUsed ||
+          !Number.isInteger(index) || !outgoing || hasStatus(player, "실명")) return false;
+      const next = nextDrawIndex(player, player.hand.indexOf(null));
+      const incoming = player.deck[next];
+      if (!incoming || incoming.id === outgoing.id) return false;
+      player.handExchangeUsed = true;
+      player.deck.push(outgoing);
+      this.deal(player, index, next);
+      this.emit("handExchange", { player });
+      return true;
     }
 
     playableIndices(player = this.currentPlayer) {
@@ -618,8 +641,27 @@ const GameRules = (() => {
     return best;
   }
 
+  function chooseHandExchange(match) {
+    const player = match.currentPlayer;
+    if (player.handExchangeUsed || hasStatus(player, "실명")) return -1;
+    const incoming = match.preview(player);
+    if (!incoming || legalCard(player, incoming)) return -1;
+    const value = scoreCard(match, player, incoming);
+    let slot = -1;
+    let improvement = 6;
+    for (const [index, card] of player.hand.entries()) {
+      if (!card || card.id === incoming.id || card.free) continue;
+      const difference = value - (legalCard(player, card) ? 0 : scoreCard(match, player, card));
+      if (difference > improvement) {
+        improvement = difference;
+        slot = index;
+      }
+    }
+    return slot;
+  }
+
   return { SETTINGS, emotes, cards: Object.freeze(cards), Match, maxActions, hasStatus, isDebuff, isBuff,
-    legalCard, temperatureDelta, blizzardDamage, stormPhaseMs, chooseCard, scoreCard };
+    legalCard, temperatureDelta, blizzardDamage, stormPhaseMs, chooseCard, chooseHandExchange, scoreCard };
 })();
 
 if (typeof module === "object" && module.exports) module.exports = GameRules;
