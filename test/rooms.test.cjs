@@ -94,7 +94,7 @@ test("one invitation seats two players and starts exactly once when both are rea
   assert.equal(shared.phase, "playing");
   assert.equal(shared.current, "P2");
   assert.equal(shared.starter, read(guest).starter);
-  assert.deepEqual(shared.players[0].statuses, [{ name: "후공 보너스", remaining: 1 }]);
+  assert.deepEqual(shared.players[0].statuses, [{ name: "후공 보호", remaining: 1 }, { name: "후공 보너스", remaining: 1 }]);
   assert.deepEqual(shared.players[1].statuses, []);
   assert.equal(shared.version, read(guest).version);
   assert.equal(read(host, shared.version), null);
@@ -122,7 +122,7 @@ test("an opponent receives no hand, pending placement, preview, draw or deck ord
 
   action(guest, "confirm");
   const hostView = read(host);
-  assert.equal(hostView.players[0].temp, 33);
+  assert.equal(hostView.players[0].temp, 34.5);
   assert.deepEqual(hostView.players[1].usedThisTurn, ["ice-pack"]);
   assert.equal(hostView.events.some(event => event.type === "draw"), false);
   assert.equal(read(guest).events.some(event => event.type === "draw"), true);
@@ -170,6 +170,27 @@ test("the host cannot control the guest turn or replay stale action revisions", 
   assert.equal(read(host).current, "P1");
 });
 
+test("trading a hand card uses the shown preview without leaking either card or resetting the clock", () => {
+  const { rooms, host, code, tick, read, action, start } = setUp();
+  const guest = start();
+  const player = rooms.items.get(code).match.p2;
+  const byId = id => cards.find(card => card.id === id);
+  player.hand = ["mint-candy", "ice-pack", "fan", "clothes"].map(byId);
+  player.deck = ["ice-pack", "udon", "heat-pack"].map(byId);
+  assert.throws(() => action(host, "exchange", { index: 1 }), { code: "OPPONENT_TURN" });
+  tick(3500);
+  const trade = action(guest, "exchange", { index: 1 });
+  assert.equal(trade.players[1].hand[1], "udon");
+  assert.equal(trade.players[1].handExchangeUsed, true);
+  assert.equal(trade.players[1].actionsUsed, 0);
+  assert.equal(trade.remainingMs, 11500);
+  assert.ok(trade.events.some(event => event.type === "draw" && event.card === "udon"));
+  const other = read(host);
+  assert.ok(!other.events.some(event => event.type === "draw"));
+  assert.ok(other.events.some(event => event.type === "handExchange" && !event.card));
+  assert.throws(() => action(guest, "exchange", { index: 0 }), { code: "INVALID_ACTION" });
+});
+
 test("staging leaves the timer intact and expiry confirms on the server", () => {
   const { rooms, host, code, tick, read, action, start } = setUp();
   const guest = start();
@@ -182,7 +203,7 @@ test("staging leaves the timer intact and expiry confirms on the server", () => 
   assert.equal(read(host).players[0].temp, 36.5);
   tick(1);
   const after = read(host);
-  assert.equal(after.players[0].temp, 33);
+  assert.equal(after.players[0].temp, 34.5);
   assert.equal(after.remainingMs, actionMs);
   assert.equal(after.events.find(event => event.type === "timeout").card, "ice-pack");
   assert.throws(() => action(guest, "confirm", {}, staged.actionVersion), { code: "STALE_ACTION" });
@@ -273,7 +294,7 @@ test("room watchers wake on updates, keep private events hidden and expire when 
   const confirmed = rooms.watch(code, host.token, staged.version, cursor, signal);
   action(guest, "confirm");
   const update = await confirmed;
-  assert.equal(update.players[0].temp, 33);
+  assert.equal(update.players[0].temp, 34.5);
   assert.ok(update.events.some(event => event.card === "ice-pack"));
   assert.ok(update.events.every(event => event.id > cursor && event.type !== "draw"));
   assert.equal(read(host).version, update.version);
@@ -314,7 +335,7 @@ test("emotes are rate limited and do not invalidate card actions or reset the cl
   assert.throws(() => action(host, "emote", { emote: "nice" }), { code: "EMOTE_COOLDOWN" });
   assert.throws(() => action(guest, "emote", { emote: "custom" }), { code: "INVALID_ACTION" });
   action(guest, "confirm", {}, before.actionVersion);
-  assert.equal(read(host).players[0].temp, 33);
+  assert.equal(read(host).players[0].temp, 34.5);
   tick(1200);
   assert.equal(action(host, "emote", { emote: "laugh" }).events.at(-1).emote, "laugh");
   assert.equal(action(guest, "emote", { emote: "dislike" }).events.at(-1).emote, "dislike");
