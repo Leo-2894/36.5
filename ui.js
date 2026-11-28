@@ -1,6 +1,6 @@
 "use strict";
 
-const { SETTINGS, Match, maxActions, hasStatus, isBuff, isDebuff, legalCard, chooseCard } = GameRules;
+const { SETTINGS, Match, maxActions, hasStatus, isBuff, isDebuff, legalCard, chooseCard, chooseHandExchange } = GameRules;
 const get = id => document.getElementById(id);
 const playerPrefix = player => player.name.toLowerCase();
 const languages = { ko: "한국어", en: "English", ja: "日本語" };
@@ -12,6 +12,7 @@ let turnTimer = null;
 let endingTimer = null;
 let deadline = 0;
 let lastDraw = null;
+let choosingExchange = false;
 let handOwner = null;
 const handSlots = [];
 let hoveredCard = null;
@@ -161,6 +162,9 @@ function handleEvent(event, live = true) {
         }
       }
       break;
+    case "handExchange":
+      log(player.name + " · 손패 교환");
+      break;
     case "temperature": {
       const sign = event.delta > 0 ? "+" : "";
       if (live) showTempFloat(player, event.delta);
@@ -253,6 +257,8 @@ function scheduleTurn() {
   if (session.currentPlayer.isAI) {
     turnTimer = setTimeout(() => {
       if (match !== session || session.gameOver || !session.currentPlayer.isAI) return;
+      const exchange = chooseHandExchange(session);
+      if (exchange >= 0) session.exchangeHand(exchange);
       const index = chooseCard(session);
       if (index === -1) {
         log("AI가 차례를 마쳤습니다.");
@@ -322,6 +328,7 @@ function resetMatch() {
   document.querySelectorAll(".rh-shake").forEach(panel => panel.classList.remove("rh-shake"));
   hideEndingScene();
   lastDraw = null;
+  choosingExchange = false;
   handOwner = null;
   hoveredCard = null;
   match = null;
@@ -424,6 +431,18 @@ function receiveOnlineState(state, events, requestMs, restoring, newMatch) {
 
 async function stageHumanCard(index, keyboard = false) {
   if (!ownsTurn()) return;
+  if (choosingExchange) {
+    choosingExchange = false;
+    if (onlineSide) {
+      render();
+      await Online.action("exchange", { index });
+    } else {
+      match.exchangeHand(index);
+      render();
+    }
+    if (keyboard && ownsTurn()) get("hand").querySelector('[data-hand-index="' + index + '"]')?.focus();
+    return;
+  }
   const session = match;
   const player = match.currentPlayer;
   const origin = !activeDrag && !reducedMotion.matches
@@ -462,6 +481,7 @@ function animatePlacement(origin, thumbnail) {
 
 async function confirmOrPass(event) {
   if (!ownsTurn()) return;
+  choosingExchange = false;
   if (onlineSide) {
     const pending = match.currentPlayer.pending;
     if (await Online.action(pending ? "confirm" : "pass") && pending && event.detail === 0 && ownsTurn()) {
@@ -588,7 +608,8 @@ function renderPlayer(player) {
 }
 
 const statusEffects = {
-  "후공 보너스": "첫 차례에 상대 체온을 낮추는 카드 피해 +2°C",
+  "후공 보너스": "첫 차례에 상대에게 주는 기본 체온 저하 +1.5°C",
+  "후공 보호": "첫 차례 시작 전까지 받는 체온 저하 50% 감소",
   "보온": "받는 체온 피해 25% 감소", "옷 파손": "받는 체온 피해 25% 증가",
   "몸살": "받는 피해 50% 증가 · 회복량 25% 감소", "동상": "회복량 50% 감소",
   "핫팩": "내 차례 시작 시 +1°C", "선풍기": "내 차례 시작 시 −1°C",
@@ -632,7 +653,8 @@ function renderHand(player) {
       continue;
     }
     const pending = player.pending?.index === index;
-    const reason = match.gameOver ? "게임 종료" : !active ? "상대 차례"
+    const reason = choosingExchange ? (card.id === match.preview(player)?.id ? "다음 카드와 같은 카드입니다." : "")
+      : match.gameOver ? "게임 종료" : !active ? "상대 차례"
       : pending ? "카드 대기중" : player.pending ? "배치한 카드를 확정하거나 취소하세요." : legalCard(player, card);
     const enabled = !reason;
     if (previous?.card === card && previous.pending === pending && draw?.index !== index) {
@@ -667,14 +689,17 @@ function renderHand(player) {
     }
 
     if (!pending) {
-      shell.onclick = () => { if (shell.draggable) stageHumanCard(index); };
+      shell.onclick = () => { if (shell.getAttribute("aria-disabled") === "false") stageHumanCard(index); };
       shell.onkeydown = event => {
-        if (!shell.draggable || (event.key !== "Enter" && event.key !== " ")) return;
+        if (shell.getAttribute("aria-disabled") !== "false" || (event.key !== "Enter" && event.key !== " ")) return;
         event.preventDefault();
         stageHumanCard(index, true);
       };
       shell.ondragstart = event => {
-        if (!shell.draggable || !event.dataTransfer) return;
+        if (!shell.draggable || !event.dataTransfer || choosingExchange) {
+          event.preventDefault();
+          return;
+        }
         event.dataTransfer.setData(dragType, String(index));
         event.dataTransfer.effectAllowed = "move";
         activeDrag = { index, session: match, ghost: createDragGhost(shell, event) };
@@ -848,9 +873,18 @@ function render() {
   const player = onlineSide ? match.players.find(side => side.name === onlineSide) : match.currentPlayer;
   const active = ownsTurn();
   const pending = active && player.pending;
+  const next = active && !hasStatus(player, "실명") && match.preview(player);
+  const exchangeAvailable = active && !pending && !player.handExchangeUsed && next &&
+    player.hand.some(card => card && card.id !== next.id);
+  if (!exchangeAvailable) choosingExchange = false;
+  const exchangeButton = get("handExchangeBtn");
+  setFlag(exchangeButton, "disabled", !exchangeAvailable);
+  exchangeButton.setAttribute("aria-pressed", String(choosingExchange));
+  setText(exchangeButton, choosingExchange ? "교환 취소" : player.handExchangeUsed ? "손패 교환 완료" : "손패 교환 1회");
+  get("hand").classList.toggle("choosing-exchange", choosingExchange);
   setFlag(get("handActions"), "hidden", !active);
   if (active) setText(get("handActions"), "남은 행동 " + remainingActions(player));
-  setText(get("handTitle"), match.gameOver ? "게임 종료" : player.name + " 손패");
+  setText(get("handTitle"), choosingExchange ? "바꿀 손패를 고르세요" : match.gameOver ? "게임 종료" : player.name + " 손패");
   setText(get("endBtn"), pending ? "카드 배치 확정" : "턴 종료");
   setFlag(get("endBtn"), "disabled", !active);
   get("endBtn").classList.toggle("confirm-ready", Boolean(pending));
@@ -909,6 +943,11 @@ for (const button of ["startGameBtn", "restartBtn", "endingRestartBtn"]) get(but
 for (const button of ["mainMenuBtn", "endingMainBtn"]) get(button).onclick = returnToMainMenu;
 get("endBtn").onclick = confirmOrPass;
 get("cancelBtn").onclick = cancelSelection;
+get("handExchangeBtn").onclick = () => {
+  choosingExchange = !choosingExchange;
+  clearDragVisuals();
+  render();
+};
 get("rematchBtn").onclick = () => Online.toggleReady();
 get("rulesBtn").onclick = () => {
   get("rulesScreen").classList.add("show");

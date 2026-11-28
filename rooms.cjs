@@ -211,6 +211,9 @@ class Rooms {
       case "confirm":
         changed = match.confirm();
         break;
+      case "exchange":
+        changed = match.exchangeHand(command.index);
+        break;
       case "pass":
         if (!match.currentPlayer.pending) {
           this.record(room, { type: "pass", player: match.currentPlayer });
@@ -303,6 +306,7 @@ class Rooms {
           ...(own && {
             hand: player.hand.map(card => card?.id ?? null),
             swapAvailable: match.canSwap(player),
+            handExchangeUsed: player.handExchangeUsed,
             pending: player.pending && { index: player.pending.index, card: player.pending.card.id },
             preview: hasStatus(player, "실명") ? null : match.preview(player)?.id ?? null,
           }),

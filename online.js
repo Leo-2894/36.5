@@ -383,7 +383,7 @@ const Online = (() => {
       return false;
     } finally {
       room[pending] = false;
-      if (ready) syncReadyButton();
+      if (session === room && (ready || room.finished)) syncReadyButton();
     }
   }
 
