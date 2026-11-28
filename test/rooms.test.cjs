@@ -57,8 +57,8 @@ test("both clients observe the storm before the next action clock starts", () =>
   tick(1);
   assert.equal(read(guest).storm, "active");
   assert.equal(read(host).blizzardCount, 1);
-  assert.deepEqual(read(host).stormDamage, { P1: 5, P2: 5 });
-  assert.deepEqual(read(host).players.map(player => player.temp), [31.5, 31.5]);
+  assert.deepEqual(read(host).stormDamage, { P1: 4.5, P2: 4.5 });
+  assert.deepEqual(read(host).players.map(player => player.temp), [32, 32]);
   assert.throws(() => action(guest, "pass"), { code: "MATCH_UNAVAILABLE" });
   tick(1499);
   assert.equal(read(host).storm, "active");
@@ -138,9 +138,9 @@ test("a guest's swapped preview survives a fresh snapshot until their next draw"
   action(guest, "stage", { index: 0 });
   const swapped = action(guest, "confirm");
   assert.equal(swapped.players[1].preview, "shaved-ice");
-  assert.equal(swapped.players[1].hand[0], null);
-  assert.deepEqual(player.deck.map(card => card.id), ["shaved-ice", "water-gun", "ice-bottle"]);
-  assert.equal(swapped.events.some(e => e.type === "draw"), false);
+  assert.equal(swapped.players[1].hand[0], "water-gun");
+  assert.deepEqual(player.deck.map(card => card.id), ["shaved-ice", "ice-bottle"]);
+  assert.equal(swapped.events.find(e => e.type === "draw").fromSwap, false);
   assert.equal(read(guest).players[1].preview, "shaved-ice");
   const opponent = read(host);
   assert.equal(Object.hasOwn(opponent.players[1], "preview"), false);
@@ -148,9 +148,9 @@ test("a guest's swapped preview survives a fresh snapshot until their next draw"
   action(guest, "stage", { index: 1 });
   const drawn = action(guest, "confirm");
   assert.equal(drawn.players[1].hand[1], "shaved-ice");
-  assert.equal(drawn.players[1].preview, "water-gun");
-  assert.deepEqual(player.deck.map(card => card.id), ["water-gun", "ice-bottle"]);
-  assert.equal(drawn.events.find(e => e.type === "draw").fromSwap, true);
+  assert.equal(drawn.players[1].preview, "ice-bottle");
+  assert.deepEqual(player.deck.map(card => card.id), ["ice-bottle"]);
+  assert.equal(drawn.events.findLast(e => e.type === "draw").fromSwap, true);
   assert.equal(read(host).events.some(e => e.type === "draw"), false);
 });
 

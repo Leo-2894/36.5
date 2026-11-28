@@ -23,12 +23,12 @@ test('AI saves its last action for recovery when the next blizzard would be fata
   match.turn = 2;
   match.finishTurn();
   match.p1.temp = 33;
-  match.p2.temp = 26.5;
+  match.p2.temp = 26;
   match.p2.actionsUsed = 1;
   match.p2.hand = ['ice-pack', 'roasted-chestnuts', 'mint-candy', 'tylenol'].map(card);
   const best = chooseCard(match);
   assert.equal(match.p2.hand[best].id, 'roasted-chestnuts');
-  assert.equal(match.p2.temp, 26.5);
+  assert.equal(match.p2.temp, 26);
   assert.equal(match.blizzardCount, 0);
   match.stage(best);
   match.confirm();
@@ -126,11 +126,18 @@ test('Heat Pack and Electric Fan each trigger on three target turns', () => {
   }
 });
 
-test('Ice Bucket applies shorter frostbite to its user', () => {
+test('Ice Bucket and Patch apply frostbite for one turn, and it expires after the affected turn', () => {
   const { match } = start();
   play(match, 'ice-bucket');
   assert.equal(match.p1.statuses.find(status => status.name === '동상').remaining, 1);
-  assert.equal(match.p2.statuses.find(status => status.name === '동상').remaining, 2);
+  assert.equal(match.p2.statuses.find(status => status.name === '동상').remaining, 1);
+  play(match, 'frostbite-patch');
+  assert.equal(temperatureDelta(match.p2, 4), 2);
+  match.finishTurn();
+  assert.equal(temperatureDelta(match.p2, 4), 4);
+  assert.equal(temperatureDelta(match.p1, 4), 2);
+  match.finishTurn();
+  assert.equal(temperatureDelta(match.p1, 4), 4);
 });
 
 test('refreshing a status preserves its expiry or extends it without stacking', () => {
@@ -187,15 +194,15 @@ test('swap moves the new card to the top of the deck until the next draw', () =>
   match.p1.deck = ['mint-candy', 'ice-pack', 'ice-bottle', 'half-and-half', 'hot-chocolate', 'udon', 'tylenol', 'cooling-spray'].map(card);
   match.p1.temp = 37.5;
   const otherCards = match.p1.hand.slice(1);
-  const reorderedDeck = ['cooling-spray', 'mint-candy', 'ice-bottle', 'half-and-half', 'hot-chocolate', 'udon', 'tylenol', 'ice-pack'].map(card);
+  const reorderedDeck = ['cooling-spray', 'mint-candy', 'half-and-half', 'hot-chocolate', 'udon', 'tylenol', 'ice-pack'].map(card);
   assert.equal(match.canSwap(match.p1), true);
   assert.equal(match.stage(0), true);
   assert.equal(match.preview(match.p1).id, 'ice-pack');
   match.confirm();
-  assert.deepEqual(match.p1.hand, [null, ...otherCards]);
+  assert.deepEqual(match.p1.hand, [card('ice-bottle'), ...otherCards]);
   assert.deepEqual(match.p1.discard, [card('swap')]);
   assert.deepEqual(match.p1.deck, reorderedDeck);
-  assert.equal(events.some(event => event.type === 'draw'), false);
+  assert.equal(events.find(event => event.type === 'draw').fromSwap, false);
   assert.equal(match.p1.actionsUsed, 0);
   const event = events.find(item => item.type === 'swap');
   assert.equal(event.previousCard, 'ice-pack');
@@ -210,9 +217,9 @@ test('swap moves the new card to the top of the deck until the next draw', () =>
   assert.equal(match.p1.hand[1].id, 'cooling-spray');
   assert.deepEqual(match.p1.deck, reorderedDeck.slice(1));
   const draws = events.filter(event => event.type === 'draw');
-  assert.equal(draws.length, 1);
-  assert.equal(draws[0].fromSwap, true);
-  assert.equal(match.preview(match.p1).id, 'ice-bottle');
+  assert.equal(draws.length, 2);
+  assert.equal(draws[1].fromSwap, true);
+  assert.equal(match.preview(match.p1).id, 'half-and-half');
 });
 
 test('swap can promote a card already ahead of the previous candidate without changing the other cards', () => {
@@ -223,19 +230,20 @@ test('swap can promote a card already ahead of the previous candidate without ch
   assert.equal(match.preview(owner).id, 'ice-bottle');
   assert.equal(match.stage(0), true);
   match.confirm();
-  assert.deepEqual(owner.deck.map(c => c.id), ['mint-candy', 'water-gun', 'hot-chocolate', 'ice-bottle']);
+  assert.equal(owner.hand[0].id, 'water-gun');
+  assert.deepEqual(owner.deck.map(c => c.id), ['mint-candy', 'hot-chocolate', 'ice-bottle']);
   assert.equal(match.preview(owner).id, 'mint-candy');
   assert.equal(match.stage(2), true);
   match.confirm();
   assert.equal(owner.hand[2].id, 'mint-candy');
-  assert.deepEqual(owner.deck.map(c => c.id), ['water-gun', 'hot-chocolate', 'ice-bottle']);
+  assert.deepEqual(owner.deck.map(c => c.id), ['hot-chocolate', 'ice-bottle']);
 });
 
-test('a staged swap preserves the visible candidate and passing delivers the reservation at next turn refill', () => {
+test('when only two deck cards remain, swap keeps both in order until the next turn refill', () => {
   const { match, events } = start('P2');
   const owner = match.p2;
   owner.hand = ['swap', 'steamed-bun', 'tylenol', 'heat-pack'].map(card);
-  owner.deck = ['hot-chocolate', 'ice-bucket', 'shaved-ice'].map(card);
+  owner.deck = ['hot-chocolate', 'shaved-ice'].map(card);
   assert.equal(match.preview(owner).id, 'hot-chocolate');
   match.stage(0);
   assert.equal(match.preview(owner).id, 'hot-chocolate');
@@ -250,7 +258,7 @@ test('a staged swap preserves the visible candidate and passing delivers the res
   assert.equal(owner.hand[0], null);
   match.finishTurn();
   assert.equal(owner.hand[0].id, 'shaved-ice');
-  assert.equal(match.preview(owner).id, 'ice-bucket');
+  assert.equal(match.preview(owner).id, 'hot-chocolate');
   assert.equal(events.filter(e => e.type === 'draw' && e.fromSwap).length, 1);
 });
 
@@ -372,7 +380,7 @@ test('clothes cuts incoming cooling by 25% and still lasts for two owner turns',
   const { match } = start();
   play(match, 'clothes');
   assert.equal(temperatureDelta(match.p1, -4), -3);
-  assert.equal(blizzardDamage(match.p1), 4);
+  assert.equal(blizzardDamage(match.p1), 3.5);
   match.finishTurn();
   match.finishTurn();
   assert.equal(match.p1.statuses.find(s => s.name === '보온').remaining, 2);
@@ -385,15 +393,15 @@ test('clothes cuts incoming cooling by 25% and still lasts for two owner turns',
 
 test('blizzard cadence, temperature scaling, caps and simultaneous result', () => {
   const { match, events } = start();
-  assert.deepEqual([25, 26, 32, 36.5, 38, 40].map(temp => blizzardDamage({ temp, statuses: [] })), [1.5, 1.5, 3.5, 5, 5.5, 5.5]);
-  assert.equal(blizzardDamage({ temp: 26, statuses: [{ name: '보온' }] }), 1.5);
-  assert.equal(blizzardDamage({ temp: 38, statuses: [{ name: '몸살' }] }), 5.5);
+  assert.deepEqual([25, 26, 32, 36.5, 38, 40].map(temp => blizzardDamage({ temp, statuses: [] })), [1, 1, 3, 4.5, 5, 5]);
+  assert.equal(blizzardDamage({ temp: 26, statuses: [{ name: '보온' }] }), 1);
+  assert.equal(blizzardDamage({ temp: 38, statuses: [{ name: '몸살' }] }), 5);
   match.applyStatus(match.p1, '옷 파손', 2);
   assert.equal(temperatureDelta(match.p1, -1), -1.5);
   match.applyStatus(match.p1, '몸살', 2);
   assert.equal(temperatureDelta(match.p1, -2), -3);
   match.p1.statuses = [];
-  match.p1.temp = match.p2.temp = 26.5;
+  match.p1.temp = match.p2.temp = 26;
   for (let turn = 0; turn < 6; turn++) match.finishTurn();
   assert.equal(match.turn, 3);
   assert.equal(match.blizzardCount, 1);
