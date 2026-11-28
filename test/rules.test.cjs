@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
-const { Match, cards, maxActions, legalCard, temperatureDelta, blizzardDamage, chooseCard } = require('../rules.js');
+const { Match, cards, maxActions, legalCard, temperatureDelta, blizzardDamage, chooseCard, forecastCard } = require('../rules.js');
 const card = id => cards.find(item => item.id === id);
 
 function start(starter = 'P1', random = () => 0.42) {
@@ -70,6 +70,52 @@ test('the reduced water gun deck replaces the same one copy for both players', (
       assert.equal(pool.filter(card => card.id === 'iced-americano').length, 4 - waterGunCopies);
     }
   }
+});
+
+test('both opening hands have direct cooling and immediate recovery without changing the deck composition', () => {
+  for (let seed = 1; seed <= 300; seed++) {
+    let rng = seed;
+    const match = new Match({ random: () => ((rng = (Math.imul(rng, 1664525) + 1013904223) >>> 0) / 2**32) });
+    for (const p of match.players) {
+      assert.equal(new Set(p.hand.map(c => c.id)).size, 4);
+      assert.ok(p.hand.some(c => c.type === '체온 상승'));
+      assert.ok(p.hand.some(c => c.type === '체온 저하'));
+      const pool = p.deck.concat(p.hand);
+      assert.equal(pool.length, 80);
+      const hasReducedGun = pool.filter(c => c.id === 'water-gun').length === 1;
+      for (const c of cards) {
+        const adjustment = hasReducedGun ? (c.id === 'water-gun' ? -1 : c.id === 'iced-americano' ? 1 : 0) : 0;
+        assert.equal(pool.filter(pick => pick === c).length, c.copies + adjustment);
+      }
+    }
+  }
+});
+
+test('card forecast uses live damage rules but neither changes the board nor rolls match RNG', () => {
+  const { match, events } = start();
+  match.p1.temp = 29;
+  match.p2.temp = 30.5;
+  match.p2.statuses = [];
+  match.applyStatus(match.p2, '몸살', 1);
+  match.random = () => { throw Error('Forecast must not advance live RNG'); };
+  const count = events.length;
+  const original = structuredClone(match.players);
+  const guaranteed = forecastCard(match, match.p1, card('ice-pack'));
+  assert.deepEqual(guaranteed, [{ temperatures: { P1: 29, P2: 25 }, winner: 'P1', overheat: [], probability: 1 }]);
+
+  // Online clients can predict with just the public player state.
+  const publicPlayers = match.players.map(({ name, temp, statuses }) => ({ name, temp, statuses }));
+  const shots = forecastCard({ players: publicPlayers }, publicPlayers[0], card('water-gun'));
+  assert.deepEqual(shots.map(shot => [shot.temperatures.P1, shot.temperatures.P2, shot.winner, shot.probability]), [
+    [29, 23, 'P1', .5], [24, 30.5, 'P2', .5],
+  ]);
+  assert.deepEqual(match.players, original);
+  assert.equal(events.length, count);
+
+  match.p1.temp = 38;
+  const heat = forecastCard(match, match.p1, card('udon'));
+  assert.deepEqual(heat[0].overheat, ['P1']);
+  assert.equal(heat[0].temperatures.P1, 39.5);
 });
 
 test('placement is reversible, confirmation uses exactly one action and refills the previewed card', () => {

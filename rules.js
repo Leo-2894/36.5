@@ -84,6 +84,10 @@ const GameRules = (() => {
   const maxActions = player => hasStatus(player, "행동 제한") ? 1 : SETTINGS.actions;
   const heals = card => card.target === "self" && (card.temp > 0 || card.outcomes?.some(amount => amount > 0) || card.periodic > 0);
   const alwaysUsable = card => card && !heals(card) && !card.removeDebuff;
+  const openingOptions = [
+    card => card.target === "opponent" && card.temp < 0 && !card.outcomes,
+    card => card.target === "self" && card.temp > 0 && !card.outcomes,
+  ];
   const half = amount => Math.sign(amount) * Math.round(Math.abs(amount) * 2) / 2;
   const stormPhaseMs = phase => phase === "approaching" ? SETTINGS.stormImpactDelay : SETTINGS.stormDuration - SETTINGS.stormImpactDelay;
 
@@ -94,6 +98,17 @@ const GameRules = (() => {
       [deck[index], deck[pick]] = [deck[pick], deck[index]];
     }
     return deck;
+  }
+
+  function ensureOpeningOptions(player) {
+    for (const fits of openingOptions) {
+      if (player.hand.some(fits)) continue;
+      const incoming = player.deck.findIndex(fits);
+      if (incoming < 0) continue;
+      const optional = player.hand.findLastIndex(card => !openingOptions.some(option => option(card)));
+      const slot = optional < 0 ? player.hand.length - 1 : optional;
+      [player.hand[slot], player.deck[incoming]] = [player.deck[incoming], player.hand[slot]];
+    }
   }
 
   function legalCard(player, card) {
@@ -218,6 +233,7 @@ const GameRules = (() => {
 
       for (const player of this.players) {
         for (const index of player.hand.keys()) this.drawInto(player, index);
+        ensureOpeningOptions(player);
       }
     }
 
@@ -566,24 +582,28 @@ const GameRules = (() => {
     return score;
   }
 
-  function blizzardLossRisk(match, player, card) {
-    // Preview the same effects as the real turn without drawing or advancing RNG.
+  function simulateCardOutcomes(match, player, card, inspect) {
     const count = card?.target === "random" ? 2 : card?.outcomes?.length ?? 1;
     const statusOptions = card?.chance === undefined ? [[0.5, 1]] :
       [[0, card.chance], [1, 1 - card.chance]];
-    let risk = 0;
+    const activeIndex = match.players.findIndex(side => side.name === player.name);
+    const results = [];
     for (let outcome = 0; outcome < count; outcome++) {
       for (const [statusRoll, weight] of statusOptions) {
         const roll = (outcome + 0.5) / count;
         let needsTemperatureRoll = Boolean(card?.outcomes || card?.target === "random");
+        const overheated = [];
         const preview = Object.assign(Object.create(Match.prototype), {
           players: match.players.map(side => ({
-            ...side, statuses: side.statuses.map(status => ({ ...status })),
+            name: side.name, temp: side.temp, turnsTaken: side.turnsTaken ?? 0,
+            statuses: side.statuses.map(status => ({ ...status })),
           })),
-          activeIndex: match.activeIndex,
+          activeIndex,
           blizzardCount: match.blizzardCount,
           winner: null,
-          onEvent() {},
+          onEvent(event) {
+            if (event.type === "overheat") overheated.push(event.player.name);
+          },
           random() {
             if (!needsTemperatureRoll) return statusRoll;
             needsTemperatureRoll = false;
@@ -592,14 +612,37 @@ const GameRules = (() => {
         });
         if (card) preview.applyCard(preview.currentPlayer, card);
         preview.checkResult();
-        if (!preview.gameOver) {
-          expireStatuses(preview.currentPlayer);
-          preview.blizzard();
-        }
-        if (preview.winner === match.opponentOf(player).name) risk += weight / count;
+        results.push(inspect(preview, weight / count, overheated));
       }
     }
-    return risk;
+    return results;
+  }
+
+  function forecastCard(match, player, card) {
+    const outcomes = simulateCardOutcomes(match, player, card, (preview, probability, overheat) => ({
+      temperatures: Object.fromEntries(preview.players.map(side => [side.name, side.temp])),
+      winner: preview.winner,
+      overheat,
+      probability,
+    }));
+    const distinct = new Map();
+    for (const { probability, ...outcome } of outcomes) {
+      const key = JSON.stringify(outcome);
+      if (distinct.has(key)) distinct.get(key).probability += probability;
+      else distinct.set(key, { ...outcome, probability });
+    }
+    return [...distinct.values()];
+  }
+
+  function blizzardLossRisk(match, player, card) {
+    const opponent = match.opponentOf(player).name;
+    return simulateCardOutcomes(match, player, card, (preview, probability) => {
+      if (!preview.gameOver) {
+        expireStatuses(preview.currentPlayer);
+        preview.blizzard();
+      }
+      return preview.winner === opponent ? probability : 0;
+    }).reduce((sum, probability) => sum + probability, 0);
   }
 
   function chooseCard(match, player = match.currentPlayer) {
@@ -664,7 +707,7 @@ const GameRules = (() => {
   }
 
   return { SETTINGS, emotes, cards: Object.freeze(cards), Match, maxActions, hasStatus, isDebuff, isBuff,
-    legalCard, temperatureDelta, blizzardDamage, stormPhaseMs, chooseCard, chooseHandExchange, scoreCard };
+    legalCard, temperatureDelta, blizzardDamage, stormPhaseMs, chooseCard, chooseHandExchange, scoreCard, forecastCard };
 })();
 
 if (typeof module === "object" && module.exports) module.exports = GameRules;
