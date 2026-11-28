@@ -738,9 +738,22 @@ function setCardEnabled(shell, enabled) {
   shell.draggable = enabled;
 }
 
+function cardForecastText(card) {
+  const player = match.currentPlayer;
+  const outcomes = GameRules.forecastCard(match, player, card);
+  return outcomes.map(({ temperatures, probability, winner, overheat }) => {
+    const affected = match.players.filter(side => temperatures[side.name] !== side.temp || overheat.includes(side.name));
+    const temps = affected.map(side => side.name + " " + side.temp.toFixed(1) + " → " + temperatures[side.name].toFixed(1) + "°C");
+    if (!temps.length) temps.push("체온 변화 없음");
+    if (overheat.length) temps.push(overheat.join(", ") + " 과열");
+    if (winner) temps.push(winner === "DRAW" ? "무승부" : winner === player.name ? "즉시 승리" : "즉시 패배");
+    return (outcomes.length > 1 ? Math.round(probability * 100) + "% " : "") + temps.join(" · ");
+  }).join(" / ");
+}
+
 function renderCardDetails(focus = document.activeElement) {
   const shell = hoveredCard?.isConnected ? hoveredCard : focus?.closest?.("#hand .card-shell:focus-visible");
-  const slot = handSlots.find(item => item && item.shell === shell) ?? handSlots.find(item => item?.pending);
+  const slot = handSlots.find(item => item?.pending) ?? handSlots.find(item => item && item.shell === shell);
   const details = get("cardDetails");
   const card = slot?.card;
   for (const item of handSlots) {
@@ -753,6 +766,10 @@ function renderCardDetails(focus = document.activeElement) {
   if (card) setText(get("detailType"), card.type);
   if (slot?.reason) setText(get("detailReason"), slot.reason);
   setText(get("detailEffect"), card?.desc ?? "카드에 커서를 올리거나 Tab으로 설명을 확인하세요.");
+  const canForecast = (card?.temp !== undefined || card?.outcomes) && ownsTurn() && !choosingExchange && (slot.pending || !slot.reason);
+  const forecast = canForecast ? cardForecastText(card) : "";
+  setFlag(get("detailForecast"), "hidden", !forecast);
+  if (forecast) setText(get("detailForecast"), "사용 결과 예상 · " + forecast);
 }
 
 const hand = get("hand");
@@ -863,7 +880,7 @@ function render() {
   const forecast = !match.gameOver && !storm && step === SETTINGS.blizzardInterval - 1;
   gauge.classList.toggle("forecast", forecast);
   setText(gauge.querySelector(".blizzard-sub"), forecast
-    ? "다음 턴 시작 시 눈보라 · 체온에 따라 −1~−5°C"
+    ? "다음 눈보라 예상 · " + stormDamageText(Object.fromEntries(match.players.map(player => [player.name, GameRules.blizzardDamage(player)])))
     : match.blizzardCount + "회 발동");
   setText(get("turnInfo"), "인게임 턴 " + match.turn + " · " + match.starter + " 선공");
 

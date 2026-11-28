@@ -4118,6 +4118,13 @@ button:focus-visible {
 }
 #detailReason { color: #ffd6a2; font-size: 12px; font-weight: 700; }
 #detailEffect { font-size: 14px; font-weight: 600; line-height: 1.4; }
+#detailForecast {
+  margin-top: 4px;
+  color: #b5ebff;
+  font-size: 13px;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
 [data-tone="neutral"] #detailEffect { color: #c2d4e4; font-weight: 500; }
 .cards .card-shell.inspected {
   outline: 2px solid #9cddff;
