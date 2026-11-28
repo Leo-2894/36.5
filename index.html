@@ -48,16 +48,12 @@
   </div>
   <div id="onlineDesktop" hidden>
     <button id="hostModeBtn" class="lobby-primary" hidden>방 만들기</button>
-    <p id="internetHelp" class="lobby-host-help" hidden>인터넷 방을 만들면 Cloudflare 임시 초대 링크가 발급됩니다.</p>
+    <p id="internetHelp" class="lobby-host-help" hidden>인터넷 방의 참가 코드를 만드는 데 시간이 걸릴 수 있습니다.</p>
     <form id="serverForm" class="lobby-form">
-      <label for="serverAddress">친구가 보낸 서버 주소 또는 초대 링크</label>
+      <label for="serverAddress">친구가 보낸 참가 코드</label>
       <div class="lobby-row">
-        <input id="serverAddress" type="text" inputmode="url" autocomplete="url" required>
-      </div>
-      <label for="serverCode">초대 코드</label>
-      <div class="lobby-row">
-        <input id="serverCode" type="text" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="6자리 코드">
-        <button type="submit">코드 확인</button>
+        <input id="serverAddress" type="text" autocomplete="off" spellcheck="false" required>
+        <button type="submit">참가</button>
       </div>
     </form>
   </div>
@@ -72,7 +68,7 @@
     </form>
   </div>
   <div id="waitingRoom" hidden>
-    <p class="lobby-waiting">친구에게 초대 링크를 보내 주세요.</p>
+    <p class="lobby-waiting">참가 코드를 복사해 친구에게 보내 주세요. 친구는 게임의 온라인 1대1에서 코드를 붙여넣으면 됩니다.</p>
     <label for="roomCode">초대 코드</label>
     <output id="roomCode" class="lobby-code"></output>
     <p id="inviteStatus" class="lobby-host-help" role="status" hidden></p>
@@ -80,7 +76,7 @@
       <label for="lanAddress">같은 네트워크 초대 주소</label>
       <select id="lanAddress"></select>
     </div>
-    <label for="inviteLink">초대 링크</label>
+    <label for="inviteLink">복사할 참가 코드</label>
     <div class="lobby-row">
       <input id="inviteLink" type="text" readonly>
       <button id="copyInviteBtn">복사</button>
@@ -126,7 +122,7 @@
     <ul>
       <li>상태는 즉시 적용되고, 효과를 받은 쪽의 다음 차례부터 남은 횟수를 계산합니다. 지속 회복과 피해는 그 차례가 시작될 때 적용됩니다.</li>
       <li>38.5°C 이상에서는 체온 상승량이 절반이 됩니다. 40°C에 도달하면 39.5°C로 돌아가고 몸살과 실명에 2턴 동안 걸립니다.</li>
-      <li>보온은 체온 저하를 50% 줄이고, 옷 파손은 25% 늘립니다. 몸살은 체온 저하를 50% 늘리고 체온 상승을 25% 줄입니다. 동상은 체온 상승을 50% 줄입니다. 상태가 겹치면 체온 저하 증폭과 회복량 감소는 각각 최대 50%입니다.</li>
+      <li>보온은 체온 저하를 25% 줄이고, 옷 파손은 25% 늘립니다. 몸살은 체온 저하를 50% 늘리고 체온 상승을 25% 줄입니다. 동상은 체온 상승을 50% 줄입니다. 상태가 겹치면 체온 저하 증폭과 회복량 감소는 각각 최대 50%입니다.</li>
       <li>상태별 증폭과 감소를 더한 다음, 체온 변화는 0.5°C 단위로 반올림합니다.</li>
     </ul>
 
@@ -142,8 +138,10 @@
     <div class="ending-kicker" id="endingKicker">GAME SET</div>
     <div class="ending-title" id="endingTitle">P1이 승리하였습니다!</div>
     <div class="ending-sub" id="endingSub">추위 속에서 마지막 온기를 지켜냈습니다.</div>
+    <p id="rematchStatus" class="rematch-status" role="status" hidden></p>
     <div class="ending-actions">
       <button id="endingRestartBtn">다시 시작</button>
+      <button id="rematchBtn" aria-pressed="false" hidden>다시하기</button>
       <button class="secondary-ending" id="endingMainBtn">메인화면으로</button>
     </div>
   </div>

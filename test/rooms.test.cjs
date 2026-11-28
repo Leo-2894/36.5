@@ -200,6 +200,58 @@ test("leaving a waiting room closes it and leaving a live game awards a forfeit 
   assert.equal(result.winner, "P1");
   assert.equal(result.remainingMs, null);
   assert.equal(result.events.at(-1).forfeited, "P2");
+  assert.equal(result.canRematch, false);
+});
+
+test("both players can opt in to a fresh match with the same room, credentials and event stream", async () => {
+  const { rooms, host, code, read, action, ready, start } = setUp();
+  const guest = start();
+  const playing = read(host);
+  const room = rooms.items.get(code);
+  room.match.p1.temp = 27;
+  room.match.p2.hand[0] = cards.find(card => card.id === "ice-pack");
+  action(guest, "stage", { index: 0 });
+  const ended = action(guest, "confirm");
+  assert.equal(ended.phase, "finished");
+  assert.equal(ended.canRematch, true);
+  assert.deepEqual(ended.ready, [false, false]);
+  assert.throws(() => ready(host, true, playing.lobbyId), { code: "STALE_ACTION" });
+
+  const cursor = ended.events.at(-1).id;
+  const update = rooms.watch(code, guest.token, ended.version, cursor, new AbortController().signal);
+  assert.deepEqual(ready(host).ready, [true, false]);
+  assert.deepEqual((await update).ready, [true, false]);
+  assert.deepEqual(ready(host, false).ready, [false, false]);
+  ready(guest);
+  const rematch = ready(host);
+  assert.equal(rematch.phase, "playing");
+  assert.equal(rematch.matchId, ended.matchId + 1);
+  assert.equal(rematch.code, code);
+  assert.equal(read(guest).side, "P2");
+  assert.deepEqual(rematch.players.map(p => p.temp), [36.5, 36.5]);
+  assert.equal(rematch.turn, 0);
+  assert.equal(rematch.remainingMs, SETTINGS.secondsPerAction * 1000);
+  assert.ok(rematch.events.every(event => event.id > cursor));
+  assert.ok(!rematch.events.some(event => event.type === "result"));
+  assert.throws(() => action(guest, "confirm", {}, ended.actionVersion), { code: "STALE_ACTION" });
+});
+
+test("a guest can leave after a result and the host keeps the original room", () => {
+  const { rooms, host, code, read, action, ready, start } = setUp();
+  const guest = start();
+  const room = rooms.items.get(code);
+  room.match.p1.temp = 27;
+  room.match.p2.hand[0] = cards.find(card => card.id === "ice-pack");
+  action(guest, "stage", { index: 0 });
+  action(guest, "confirm");
+  ready(host);
+  rooms.leave(code, guest.token);
+  assert.equal(read(host).phase, "waiting");
+  assert.throws(() => read(guest), { code: "UNAUTHORIZED" });
+  const next = rooms.join(code);
+  assert.deepEqual(next.state.ready, [false, false]);
+  start(next);
+  assert.equal(read(host).matchId, 2);
 });
 
 test("room watchers wake on updates, keep private events hidden and expire when idle", async () => {

@@ -388,8 +388,8 @@ function renderOnlineTurn() {
   setText(status, onlineNotice || (match.gameOver ? "게임 종료" : ownsTurn() ? "내 차례" : "상대 차례"));
 }
 
-function receiveOnlineState(state, events, requestMs, restoring) {
-  if (!onlineSide) {
+function receiveOnlineState(state, events, requestMs, restoring, newMatch) {
+  if (!onlineSide || newMatch) {
     resetMatch();
     onlineSide = state.side;
     match = { preview: player => player.nextCard };
@@ -589,7 +589,7 @@ function renderPlayer(player) {
 
 const statusEffects = {
   "후공 보너스": "첫 차례에 상대 체온을 낮추는 카드 피해 +2°C",
-  "보온": "받는 체온 피해 50% 감소", "옷 파손": "받는 체온 피해 25% 증가",
+  "보온": "받는 체온 피해 25% 감소", "옷 파손": "받는 체온 피해 25% 증가",
   "몸살": "받는 피해 50% 증가 · 회복량 25% 감소", "동상": "회복량 50% 감소",
   "핫팩": "내 차례 시작 시 +1°C", "선풍기": "내 차례 시작 시 −1°C",
   "행동 제한": "한 차례에 행동 1회", "회복 제한": "회복 카드 사용 불가", "실명": "다음 카드 비공개",
@@ -909,6 +909,7 @@ for (const button of ["startGameBtn", "restartBtn", "endingRestartBtn"]) get(but
 for (const button of ["mainMenuBtn", "endingMainBtn"]) get(button).onclick = returnToMainMenu;
 get("endBtn").onclick = confirmOrPass;
 get("cancelBtn").onclick = cancelSelection;
+get("rematchBtn").onclick = () => Online.toggleReady();
 get("rulesBtn").onclick = () => {
   get("rulesScreen").classList.add("show");
   get("backToMenuBtn").focus();
@@ -1130,7 +1131,7 @@ function showEndingScene(winner, both, forfeited) {
   document.body.classList.add("game-not-started");
   document.querySelector(".wrap").classList.remove("fullscreen-game");
   get("endingScreen").classList.add("show");
-  get(onlineSide ? "endingMainBtn" : "endingRestartBtn").focus();
+  get(onlineSide ? (get("rematchBtn").hidden ? "endingMainBtn" : "rematchBtn") : "endingRestartBtn").focus();
 }
 function hideEndingScene() {
   document.getElementById("endingScreen")?.classList.remove("show");
