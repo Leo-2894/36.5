@@ -331,14 +331,29 @@ test('temperature modifiers add within the 25% and 50% steps', () => {
   const cooling = (...names) => temperatureDelta({ statuses: status(...names) }, -4);
   const warming = (temp, ...names) => temperatureDelta({ temp, statuses: status(...names) }, 4);
 
-  assert.equal(cooling('보온'), -2);
+  assert.equal(cooling('보온'), -3);
   assert.equal(cooling('옷 파손'), -5);
-  assert.equal(cooling('보온', '옷 파손'), -3);
-  assert.equal(cooling('보온', '몸살'), -4);
+  assert.equal(cooling('보온', '옷 파손'), -4);
+  assert.equal(cooling('보온', '몸살'), -5);
   assert.equal(cooling('옷 파손', '몸살'), -6);
   assert.equal(warming(36.5, '몸살'), 3);
   assert.equal(warming(36.5, '동상', '몸살'), 2);
   assert.equal(warming(38.5, '동상', '몸살'), 2);
+});
+
+test('clothes cuts incoming cooling by 25% and still lasts for two owner turns', () => {
+  const { match } = start();
+  play(match, 'clothes');
+  assert.equal(temperatureDelta(match.p1, -4), -3);
+  assert.equal(blizzardDamage(match.p1), 4);
+  match.finishTurn();
+  match.finishTurn();
+  assert.equal(match.p1.statuses.find(s => s.name === '보온').remaining, 2);
+  match.finishTurn();
+  match.finishTurn();
+  assert.equal(match.p1.statuses.find(s => s.name === '보온').remaining, 1);
+  match.finishTurn();
+  assert.equal(temperatureDelta(match.p1, -4), -4);
 });
 
 test('blizzard cadence, temperature scaling, caps and simultaneous result', () => {

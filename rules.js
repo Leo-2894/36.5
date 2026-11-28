@@ -18,7 +18,7 @@ const GameRules = (() => {
     maxBlizzardDamage: 5.5,
     blizzardMinAt: 26,
     blizzardMaxAt: 38,
-    insulation: 0.5,
+    insulation: 0.25,
     tornClothes: 0.25,
     feverDamage: 0.5,
     feverHealing: 0.25,
@@ -54,7 +54,7 @@ const GameRules = (() => {
     { id: "ice-bottle", name: "얼음 유리병", type: "자폭", target: "both", temp: -2, copies: 2, desc: "양쪽 체온 -2°C" },
     { id: "ice-bucket", name: "아이스 버킷", type: "자폭", target: "both", status: "동상", turns: 2, selfTurns: 1, copies: 2, desc: "자신에게 동상 1턴, 상대에게 동상 2턴" },
     { id: "heat-pack", name: "핫팩", type: "효과", target: "self", status: "핫팩", periodic: 1, turns: 3, copies: 2, desc: "다음 내 차례부터 3회, 차례 시작 시 +1°C" },
-    { id: "clothes", name: "옷", type: "효과", target: "self", status: "보온", turns: 2, desc: "자신에게 보온 2턴" },
+    { id: "clothes", name: "옷", type: "효과", target: "self", status: "보온", turns: 2, desc: "2턴 동안 받는 체온 저하 25% 감소" },
     { id: "tylenol", name: "타이레놀", type: "효과", target: "self", removeDebuff: true, desc: "자신에게 걸린 가장 오래된 디버프 제거" },
     { id: "electric-fan", name: "선풍기", type: "효과", target: "opponent", status: "선풍기", periodic: -1, turns: 3, copies: 2, desc: "다음 상대 차례부터 3회, 차례 시작 시 -1°C" },
     { id: "frostbite-patch", name: "파스", type: "효과", target: "opponent", status: "동상", turns: 2, desc: "상대에게 동상 2턴" },
@@ -520,7 +520,7 @@ const GameRules = (() => {
       }
       if (card.status) {
         const values = {
-          "보온": 4 + 2 * urgent + (roundsUntilBlizzard <= 2 ? 1.5 : 0),
+          "보온": (4 + 2 * urgent + (roundsUntilBlizzard <= 2 ? 1.5 : 0)) * SETTINGS.insulation / 0.5,
           "동상": target.temp <= 33 ? 5 : 2.5,
           "옷 파손": 4.5,
           "핫팩": player.temp <= 34 ? 6.5 : 2,
