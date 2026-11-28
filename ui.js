@@ -863,7 +863,7 @@ function render() {
   const forecast = !match.gameOver && !storm && step === SETTINGS.blizzardInterval - 1;
   gauge.classList.toggle("forecast", forecast);
   setText(gauge.querySelector(".blizzard-sub"), forecast
-    ? "다음 턴 시작 시 눈보라 · 체온에 따라 −1.5~−5.5°C"
+    ? "다음 턴 시작 시 눈보라 · 체온에 따라 −1~−5°C"
     : match.blizzardCount + "회 발동");
   setText(get("turnInfo"), "인게임 턴 " + match.turn + " · " + match.starter + " 선공");
 
